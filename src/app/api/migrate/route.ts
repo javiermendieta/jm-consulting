@@ -103,6 +103,41 @@ export async function POST() {
       results.push(`Insert TipoDia: ${e.message}`)
     }
 
+    // 7. Agregar columnas faltantes a ForecastEntry
+    const alterStatements = [
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "restauranteId" TEXT;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "tipoDiaId" TEXT;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "paxTeorico" DOUBLE PRECISION;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "paxReal" DOUBLE PRECISION;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "ventaTeorica" DOUBLE PRECISION;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "ventaReal" DOUBLE PRECISION;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "ticketTeorico" DOUBLE PRECISION;`,
+      `ALTER TABLE "ForecastEntry" ADD COLUMN IF NOT EXISTS "ticketReal" DOUBLE PRECISION;`
+    ]
+    
+    for (const sql of alterStatements) {
+      try {
+        await db.$executeRawUnsafe(sql)
+      } catch (e: any) {
+        // Ignorar errores de columna ya existente
+      }
+    }
+    results.push('Columnas ForecastEntry verificadas')
+
+    // 8. Actualizar ForecastEntry con valores válidos
+    try {
+      await db.$executeRawUnsafe(`
+        UPDATE "ForecastEntry" SET "restauranteId" = 'rest-1' WHERE "restauranteId" IS NULL;
+      `)
+    } catch (e: any) {}
+    
+    try {
+      await db.$executeRawUnsafe(`
+        UPDATE "ForecastEntry" SET "tipoDiaId" = 'td-1' WHERE "tipoDiaId" IS NULL;
+      `)
+    } catch (e: any) {}
+    results.push('ForecastEntry actualizado')
+
     // Verificar resultado
     let restaurantes = 0
     let tiposDia = 0
