@@ -7,11 +7,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const periodo = searchParams.get('periodo')
     const tipoVista = searchParams.get('tipoVista') || 'mensual'
-    const cuentaId = searchParams.get('cuentaId')
 
     const where: any = { tipoVista }
     if (periodo) where.periodo = periodo
-    if (cuentaId) where.cuentaId = cuentaId
 
     const valores = await db.pLValor.findMany({
       where,
@@ -31,48 +29,37 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Crear/Actualizar valor P&L (upsert manual)
+// POST - Crear/Actualizar valor P&L (upsert)
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     
-    // Buscar si existe un valor con estos parámetros
-    const existing = await db.pLValor.findFirst({
+    const valor = await db.pLValor.upsert({
       where: {
+        cuentaId_periodo_tipoVista: {
+          cuentaId: data.cuentaId,
+          periodo: data.periodo,
+          tipoVista: data.tipoVista
+        }
+      },
+      update: {
+        forecastMonto: data.forecastMonto,
+        forecastPorcentaje: data.forecastPorcentaje,
+        realMonto: data.realMonto,
+        realPorcentaje: data.realPorcentaje,
+        atribucion: data.atribucion
+      },
+      create: {
         cuentaId: data.cuentaId,
         periodo: data.periodo,
         tipoVista: data.tipoVista,
-        cashflowItemId: data.cashflowItemId || null
+        forecastMonto: data.forecastMonto,
+        forecastPorcentaje: data.forecastPorcentaje,
+        realMonto: data.realMonto,
+        realPorcentaje: data.realPorcentaje,
+        atribucion: data.atribucion
       }
     })
-
-    let valor
-    if (existing) {
-      valor = await db.pLValor.update({
-        where: { id: existing.id },
-        data: {
-          forecastMonto: data.forecastMonto,
-          forecastPorcentaje: data.forecastPorcentaje,
-          realMonto: data.realMonto,
-          realPorcentaje: data.realPorcentaje,
-          atribucion: data.atribucion
-        }
-      })
-    } else {
-      valor = await db.pLValor.create({
-        data: {
-          cuentaId: data.cuentaId,
-          cashflowItemId: data.cashflowItemId || null,
-          periodo: data.periodo,
-          tipoVista: data.tipoVista,
-          forecastMonto: data.forecastMonto,
-          forecastPorcentaje: data.forecastPorcentaje,
-          realMonto: data.realMonto,
-          realPorcentaje: data.realPorcentaje,
-          atribucion: data.atribucion
-        }
-      })
-    }
 
     return NextResponse.json(valor)
   } catch (error) {

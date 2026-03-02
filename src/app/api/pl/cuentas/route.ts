@@ -1,40 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET - Listar cuentas P&L
+// GET - Listar cuentas P&L con items de cashflow
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const nivelId = searchParams.get('nivelId')
-    const includeItems = searchParams.get('includeItems')
 
     const where: any = {}
     if (nivelId) where.nivelId = nivelId
 
+    // Obtener cuentas con sus items de cashflow
     const cuentas = await db.cuentaPL.findMany({
       where,
       include: {
         nivel: true,
-        subcuentas: {
-          include: {
-            valores: true,
-            cashflowItems: {
-              include: {
-                categoria: true
-              }
-            }
-          }
-        },
         valores: true,
-        padre: true,
-        cashflowItems: includeItems === 'true' ? {
+        cashflowItems: {
           include: {
             categoria: true,
             registros: true
           }
-        } : false
+        }
       },
-      orderBy: [{ nivelId: 'asc' }, { orden: 'asc' }]
+      orderBy: [{ orden: 'asc' }]
     })
 
     return NextResponse.json(cuentas)
@@ -67,28 +56,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Actualizar cuenta
-export async function PUT(request: NextRequest) {
-  try {
-    const data = await request.json()
-    
-    const cuenta = await db.cuentaPL.update({
-      where: { id: data.id },
-      data: {
-        nombre: data.nombre,
-        orden: data.orden,
-        esSubtotal: data.esSubtotal,
-        esResultado: data.esResultado
-      }
-    })
-
-    return NextResponse.json(cuenta)
-  } catch (error) {
-    console.error('Error updating cuenta PL:', error)
-    return NextResponse.json({ error: 'Error al actualizar cuenta P&L' }, { status: 500 })
-  }
-}
-
 // DELETE - Eliminar cuenta
 export async function DELETE(request: NextRequest) {
   try {
@@ -99,7 +66,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'id es requerido' }, { status: 400 })
     }
 
+    // Desasociar items de cashflow
+    await db.cashflowItem.updateMany({
+      where: { cuentaPLId: id },
+      data: { cuentaPLId: null }
+    })
+
+    // Eliminar valores
+    await db.pLValor.deleteMany({
+      where: { cuentaId: id }
+    })
+
+    // Eliminar la cuenta
     await db.cuentaPL.delete({ where: { id } })
+    
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting cuenta PL:', error)
