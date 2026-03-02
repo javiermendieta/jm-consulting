@@ -5,13 +5,6 @@ import { db } from '@/lib/db'
 export async function GET() {
   try {
     const niveles = await db.nivelPL.findMany({
-      include: {
-        cuentas: {
-          include: {
-            subcuentas: true
-          }
-        }
-      },
       orderBy: { orden: 'asc' }
     })
     return NextResponse.json(niveles)
@@ -21,7 +14,7 @@ export async function GET() {
   }
 }
 
-// POST - Crear nuevo nivel (solo para inicialización)
+// POST - Crear nuevo nivel
 export async function POST(request: Request) {
   try {
     const data = await request.json()

@@ -10,7 +10,8 @@ import {
   TrendingDown,
   DollarSign,
   Info,
-  Link
+  Link,
+  Calculator
 } from 'lucide-react'
 
 interface NivelPL {
@@ -28,23 +29,13 @@ interface CuentaPL {
   esSubtotal: boolean
   esResultado: boolean
   nivel?: NivelPL
-  valores: PLValor[]
   cashflowItems: CashflowItem[]
-}
-
-interface PLValor {
-  id: string
-  cuentaId: string
-  periodo: string
-  tipoVista: string
-  forecastMonto: number | null
-  realMonto: number | null
 }
 
 interface CashflowItem {
   id: string
   nombre: string
-  categoria?: { nombre: string }
+  categoria?: { nombre: string; tipo: string }
   registros: CashflowEntry[]
 }
 
@@ -60,6 +51,7 @@ export function PLModule() {
   const [niveles, setNiveles] = useState<NivelPL[]>([])
   const [cuentas, setCuentas] = useState<CuentaPL[]>([])
   const [valoresReales, setValoresReales] = useState<Record<string, number>>({})
+  const [forecastsItems, setForecastsItems] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [expandedCuentas, setExpandedCuentas] = useState<Set<string>>(new Set())
 
@@ -74,7 +66,7 @@ export function PLModule() {
 
   useEffect(() => {
     fetchData()
-  }, [plFiltros.periodo, plFiltros.tipoVista])
+  }, [plFiltros.periodo])
 
   const fetchData = async () => {
     setLoading(true)
@@ -92,6 +84,10 @@ export function PLModule() {
       // Fetch valores reales
       const realesRes = await fetch(`/api/pl/reales?mes=${mes}&anio=${anio}`)
       const realesData = await realesRes.json()
+      
+      // Fetch forecasts de items
+      const forecastsRes = await fetch(`/api/pl/item-forecast?periodo=${plFiltros.periodo}`)
+      const forecastsData = await forecastsRes.json()
 
       // Si no hay datos, inicializar
       if (!nivelesData || nivelesData.length === 0) {
@@ -103,6 +99,7 @@ export function PLModule() {
       setNiveles(Array.isArray(nivelesData) ? nivelesData : [])
       setCuentas(Array.isArray(cuentasData) ? cuentasData : [])
       setValoresReales(realesData && typeof realesData === 'object' && !realesData.error ? realesData : {})
+      setForecastsItems(forecastsData && typeof forecastsData === 'object' ? forecastsData : {})
     } catch (error) {
       console.error('Error fetching P&L data:', error)
     } finally {
@@ -110,21 +107,20 @@ export function PLModule() {
     }
   }
 
-  const updateValor = async (cuentaId: string, value: number) => {
+  // Guardar forecast de un item
+  const saveItemForecast = async (itemId: string, value: number) => {
     try {
-      await fetch('/api/pl/valores', {
+      await fetch('/api/pl/item-forecast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cuentaId,
+          itemId,
           periodo: plFiltros.periodo,
-          tipoVista: plFiltros.tipoVista,
           forecastMonto: value
         })
       })
-      fetchData()
     } catch (error) {
-      console.error('Error updating valor:', error)
+      console.error('Error saving forecast:', error)
     }
   }
 
@@ -143,11 +139,10 @@ export function PLModule() {
     return `$${value.toLocaleString()}`
   }
 
+  // Calcular teórico de cuenta sumando forecasts de items
   const getTeoricoCuenta = (cuenta: CuentaPL): number => {
-    const valor = cuenta.valores?.find(v => 
-      v.periodo === plFiltros.periodo && v.tipoVista === plFiltros.tipoVista
-    )
-    return valor?.forecastMonto || 0
+    if (!cuenta.cashflowItems || cuenta.cashflowItems.length === 0) return 0
+    return cuenta.cashflowItems.reduce((sum, item) => sum + (forecastsItems[item.id] || 0), 0)
   }
 
   const getRealCuenta = (cuentaId: string): number => {
@@ -160,6 +155,7 @@ export function PLModule() {
       .reduce((sum, r) => sum + (r.monto || 0), 0) || 0
   }
 
+  // Calcular total de ventas para porcentajes
   const getTotalVentas = (tipo: 'teórico' | 'real'): number => {
     const vbNivel = niveles.find(n => n.codigo === 'VB')
     if (!vbNivel) return 0
@@ -184,7 +180,7 @@ export function PLModule() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Estado de Resultados (P&L)</h2>
-          <p className="text-gray-400">Teórico editable · Real desde Cashflow</p>
+          <p className="text-gray-400">Carga el teórico por item · Totales automáticos</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -210,12 +206,13 @@ export function PLModule() {
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-3">
         <Info className="w-5 h-5 text-blue-400" />
         <div className="text-sm text-blue-300">
-          <strong>Teórico:</strong> Carga manual. <strong>Real:</strong> Desde Cashflow según asociaciones.
+          <strong>Teórico:</strong> Edita cada item. El total de la cuenta se calcula automáticamente.
+          <strong className="ml-2">Real:</strong> Viene del Cashflow según asociaciones.
         </div>
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
           <div className="flex items-center gap-2 text-green-400 mb-2">
             <TrendingUp className="w-5 h-5" />
@@ -239,15 +236,25 @@ export function PLModule() {
             {formatCurrency(getTotalVentas('real') - getTotalVentas('teórico'))}
           </div>
         </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-yellow-400 mb-2">
+            <Calculator className="w-5 h-5" />
+            <span className="text-sm">% Cumpl.</span>
+          </div>
+          <div className={`text-2xl font-bold ${getTotalVentas('real') >= getTotalVentas('teórico') ? 'text-green-400' : 'text-yellow-400'}`}>
+            {getTotalVentas('teórico') > 0 ? `${((getTotalVentas('real') / getTotalVentas('teórico')) * 100).toFixed(0)}%` : '-'}
+          </div>
+        </div>
       </div>
 
       {/* Tabla P&L */}
       <div className="bg-[#1a1a1a] rounded-xl border border-white/10 overflow-hidden">
-        <div className="grid grid-cols-12 gap-2 p-3 bg-[#0d0d0d] border-b border-white/10 text-sm text-gray-400">
+        <div className="grid grid-cols-12 gap-2 p-3 bg-[#0d0d0d] border-b border-white/10 text-sm text-gray-400 font-medium">
           <div className="col-span-4">Concepto</div>
-          <div className="col-span-3 text-center">Teórico</div>
-          <div className="col-span-3 text-center">Real</div>
+          <div className="col-span-2 text-center">Teórico</div>
+          <div className="col-span-2 text-center">Real</div>
           <div className="col-span-2 text-center">Diferencia</div>
+          <div className="col-span-2 text-center">% Cumpl.</div>
         </div>
 
         {niveles.map((nivel) => {
@@ -261,49 +268,45 @@ export function PLModule() {
               
               {cuentasNivel.map((cuenta) => {
                 const hasItems = cuenta.cashflowItems && cuenta.cashflowItems.length > 0
-                const teorico = getTeoricoCuenta(cuenta)
-                const real = getRealCuenta(cuenta.id)
+                const teoricoTotal = getTeoricoCuenta(cuenta)
+                const realTotal = getRealCuenta(cuenta.id)
                 
                 return (
                   <div key={cuenta.id}>
-                    <div className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-white/5 ${cuenta.esResultado ? 'bg-green-500/10' : ''}`}>
+                    {/* Fila de cuenta */}
+                    <div 
+                      className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-white/5 ${cuenta.esResultado ? 'bg-green-500/10' : ''} cursor-pointer`}
+                      onClick={() => hasItems && toggleCuenta(cuenta.id)}
+                    >
                       <div className="col-span-4 flex items-center gap-2">
                         {hasItems && (
-                          <button onClick={() => toggleCuenta(cuenta.id)} className="text-gray-400">
+                          <span className="text-gray-400">
                             {expandedCuentas.has(cuenta.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          </button>
+                          </span>
                         )}
-                        <span className={cuenta.esResultado ? 'text-green-400 font-semibold' : 'text-white'}>
+                        <span className={`${cuenta.esResultado ? 'text-green-400 font-semibold' : 'text-white'} ${hasItems ? '' : 'ml-6'}`}>
                           {cuenta.nombre}
                         </span>
-                        {hasItems && <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">{cuenta.cashflowItems.length}</span>}
-                      </div>
-                      
-                      <div className="col-span-3 text-center">
-                        <input
-                          type="number"
-                          value={teorico || ''}
-                          onChange={(e) => {
-                            const newCuentas = cuentas.map(c => 
-                              c.id === cuenta.id 
-                                ? { ...c, valores: [{ ...c.valores[0], forecastMonto: Number(e.target.value) }] }
-                                : c
-                            )
-                            setCuentas(newCuentas)
-                          }}
-                          onBlur={(e) => updateValor(cuenta.id, Number(e.target.value) || 0)}
-                          className="w-24 px-2 py-1 bg-transparent border border-white/10 rounded text-white text-sm text-center focus:border-blue-500 focus:outline-none"
-                          placeholder="0"
-                        />
-                      </div>
-                      
-                      <div className="col-span-3 text-center text-sm text-white">
-                        {formatCurrency(real)}
+                        {hasItems && <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">{cuenta.cashflowItems.length}</span>}
                       </div>
                       
                       <div className="col-span-2 text-center">
-                        <span className={`text-sm ${real >= teorico ? 'text-green-400' : 'text-red-400'}`}>
-                          {real - teorico >= 0 ? '+' : ''}{real - teorico}
+                        <span className="text-blue-400 font-medium">{formatCurrency(teoricoTotal)}</span>
+                      </div>
+                      
+                      <div className="col-span-2 text-center text-white">
+                        {formatCurrency(realTotal)}
+                      </div>
+                      
+                      <div className="col-span-2 text-center">
+                        <span className={`text-sm ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                          {realTotal - teoricoTotal >= 0 ? '+' : ''}{formatCurrency(realTotal - teoricoTotal)}
+                        </span>
+                      </div>
+                      
+                      <div className="col-span-2 text-center">
+                        <span className={`text-sm ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                          {teoricoTotal > 0 ? `${((realTotal / teoricoTotal) * 100).toFixed(0)}%` : '-'}
                         </span>
                       </div>
                     </div>
@@ -312,19 +315,74 @@ export function PLModule() {
                     {hasItems && expandedCuentas.has(cuenta.id) && (
                       <div className="bg-[#0d0d0d]">
                         {cuenta.cashflowItems.map((item) => {
+                          const teoricoItem = forecastsItems[item.id] || 0
                           const realItem = getRealItem(item)
+                          
                           return (
-                            <div key={item.id} className="grid grid-cols-12 gap-2 p-2 pl-10 items-center border-l-2 border-green-500/30 ml-4">
+                            <div key={item.id} className="grid grid-cols-12 gap-2 p-2 pl-12 items-center border-l-2 border-blue-500/30 hover:bg-white/5">
                               <div className="col-span-4 flex items-center gap-2">
-                                <Link className="w-3 h-3 text-green-400" />
+                                <Link className="w-3 h-3 text-blue-400" />
                                 <span className="text-gray-300 text-sm">{item.nombre}</span>
                               </div>
-                              <div className="col-span-3 text-center text-sm text-gray-500">-</div>
-                              <div className="col-span-3 text-center text-sm text-gray-400">{formatCurrency(realItem)}</div>
-                              <div className="col-span-2"></div>
+                              
+                              {/* Teórico del item - EDITABLE */}
+                              <div className="col-span-2 text-center">
+                                <input
+                                  type="number"
+                                  value={teoricoItem || ''}
+                                  onChange={(e) => {
+                                    const newForecasts = { ...forecastsItems }
+                                    newForecasts[item.id] = Number(e.target.value) || 0
+                                    setForecastsItems(newForecasts)
+                                  }}
+                                  onBlur={(e) => saveItemForecast(item.id, Number(e.target.value) || 0)}
+                                  className="w-20 px-2 py-1 bg-[#1a1a1a] border border-blue-500/50 rounded text-white text-sm text-center focus:border-blue-500 focus:outline-none"
+                                  placeholder="0"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              
+                              {/* Real del item */}
+                              <div className="col-span-2 text-center text-sm text-gray-400">
+                                {formatCurrency(realItem)}
+                              </div>
+                              
+                              {/* Diferencia item */}
+                              <div className="col-span-2 text-center">
+                                <span className={`text-xs ${realItem >= teoricoItem ? 'text-green-400' : 'text-red-400'}`}>
+                                  {formatCurrency(realItem - teoricoItem)}
+                                </span>
+                              </div>
+                              
+                              {/* % Cumplimiento item */}
+                              <div className="col-span-2 text-center">
+                                <span className={`text-xs ${realItem >= teoricoItem ? 'text-green-400' : 'text-red-400'}`}>
+                                  {teoricoItem > 0 ? `${((realItem / teoricoItem) * 100).toFixed(0)}%` : '-'}
+                                </span>
+                              </div>
                             </div>
                           )
                         })}
+                        
+                        {/* Total de la cuenta */}
+                        <div className="grid grid-cols-12 gap-2 p-2 pl-8 bg-[#1a1a1a] border-t border-white/10">
+                          <div className="col-span-4 flex items-center gap-2">
+                            <Calculator className="w-4 h-4 text-blue-400" />
+                            <span className="text-blue-400 text-sm font-medium">TOTAL {cuenta.nombre}</span>
+                          </div>
+                          <div className="col-span-2 text-center text-blue-400 font-medium">{formatCurrency(teoricoTotal)}</div>
+                          <div className="col-span-2 text-center text-white font-medium">{formatCurrency(realTotal)}</div>
+                          <div className="col-span-2 text-center">
+                            <span className={`text-sm font-medium ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                              {formatCurrency(realTotal - teoricoTotal)}
+                            </span>
+                          </div>
+                          <div className="col-span-2 text-center">
+                            <span className={`text-sm font-medium ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                              {teoricoTotal > 0 ? `${((realTotal / teoricoTotal) * 100).toFixed(0)}%` : '-'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -336,7 +394,7 @@ export function PLModule() {
       </div>
       
       <div className="text-center text-sm text-gray-500">
-        Para crear/editar cuentas: <strong className="text-blue-400">Configuración → Plan de Cuentas</strong>
+        Para asociar items a cuentas: <strong className="text-blue-400">Configuración → Plan de Cuentas</strong>
       </div>
     </div>
   )
