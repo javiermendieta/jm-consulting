@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '@/store/useStore'
 import { 
-  Plus, 
-  Trash2, 
-  Edit3,
-  Save,
   ChevronDown,
   ChevronRight,
-  AlertCircle
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Info,
+  Link
 } from 'lucide-react'
 
 interface NivelPL {
@@ -30,6 +31,8 @@ interface CuentaPL {
   esResultado: boolean
   subcuentas: CuentaPL[]
   valores: PLValor[]
+  cashflowItems?: CashflowItem[]
+  nivel?: NivelPL
 }
 
 interface PLValor {
@@ -44,14 +47,33 @@ interface PLValor {
   atribucion: string | null
 }
 
+interface CashflowItem {
+  id: string
+  nombre: string
+  categoria?: { nombre: string; tipo: string }
+}
+
+interface ValoresReales {
+  [cuentaId: string]: number
+}
+
 export function PLModule() {
   const { plFiltros, setPLFiltros } = useStore()
   const [niveles, setNiveles] = useState<NivelPL[]>([])
   const [cuentas, setCuentas] = useState<CuentaPL[]>([])
+  const [valoresReales, setValoresReales] = useState<ValoresReales>({})
   const [loading, setLoading] = useState(true)
   const [expandedCuentas, setExpandedCuentas] = useState<Set<string>>(new Set())
-  const [editingCuenta, setEditingCuenta] = useState<string | null>(null)
-  const [newCuentaName, setNewCuentaName] = useState('')
+
+  // Parse periodo to mes and anio
+  const getMesAnio = () => {
+    if (plFiltros.periodo) {
+      const [anio, mes] = plFiltros.periodo.split('-').map(Number)
+      return { mes, anio }
+    }
+    const now = new Date()
+    return { mes: now.getMonth() + 1, anio: now.getFullYear() }
+  }
 
   useEffect(() => {
     fetchData()
@@ -60,13 +82,17 @@ export function PLModule() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [nivelesRes, cuentasRes] = await Promise.all([
+      const { mes, anio } = getMesAnio()
+      
+      const [nivelesRes, cuentasRes, realesRes] = await Promise.all([
         fetch('/api/pl/niveles'),
-        fetch(`/api/pl/cuentas`)
+        fetch(`/api/pl/cuentas?includeItems=true`),
+        fetch(`/api/pl/reales?mes=${mes}&anio=${anio}&tipoVista=${plFiltros.tipoVista}`)
       ])
 
       let nivelesData = await nivelesRes.json()
       let cuentasData = await cuentasRes.json()
+      const realesData = await realesRes.json()
 
       // Si no hay niveles, crear estructura inicial
       if (nivelesData.length === 0) {
@@ -81,6 +107,7 @@ export function PLModule() {
 
       setNiveles(nivelesData)
       setCuentas(cuentasData)
+      setValoresReales(realesData)
     } catch (error) {
       console.error('Error fetching P&L data:', error)
     } finally {
@@ -89,12 +116,14 @@ export function PLModule() {
   }
 
   const createInitialStructure = async () => {
-    // Crear los 4 niveles fijos
+    // Crear los niveles fijos según la estructura requerida
     const nivelesData = [
       { codigo: 'VB', nombre: 'VENTA BRUTA', orden: 1 },
-      { codigo: 'VN', nombre: 'VENTA NETA', orden: 2 },
-      { codigo: 'CM', nombre: 'CONTRIBUCIÓN MARGINAL', orden: 3 },
-      { codigo: 'PF', nombre: 'PROFIT', orden: 4 }
+      { codigo: 'CV', nombre: 'COSTO DE VENTA', orden: 2 },
+      { codigo: 'CM', nombre: 'CMV', orden: 3 },
+      { codigo: 'VN', nombre: 'VENTA NETA', orden: 4 },
+      { codigo: 'GO', nombre: 'GASTOS OPERATIVOS', orden: 5 },
+      { codigo: 'PF', nombre: 'PROFIT', orden: 6 }
     ]
 
     for (const nivel of nivelesData) {
@@ -105,37 +134,30 @@ export function PLModule() {
       })
     }
 
-    // Crear cuentas básicas
-    const cuentasData = [
-      // Nivel 1 - Venta Bruta
-      { nivelCodigo: 'VB', nombre: 'Venta Total', orden: 1, esSubtotal: false },
-      { nivelCodigo: 'VB', nombre: 'Costos de Venta', orden: 2, esSubtotal: false },
-      { nivelCodigo: 'VB', nombre: '- IVA', orden: 3, esSubtotal: false },
-      { nivelCodigo: 'VB', nombre: '- Comisiones', orden: 4, esSubtotal: false },
-      { nivelCodigo: 'VB', nombre: '- Descuentos', orden: 5, esSubtotal: false },
-      
-      // Nivel 2 - Venta Neta
-      { nivelCodigo: 'VN', nombre: 'Venta Neta', orden: 1, esResultado: true },
-      { nivelCodigo: 'VN', nombre: 'CMV', orden: 2, esSubtotal: false },
-      { nivelCodigo: 'VN', nombre: '- Proteínas', orden: 3, esSubtotal: false },
-      { nivelCodigo: 'VN', nombre: '- Vegetales', orden: 4, esSubtotal: false },
-      { nivelCodigo: 'VN', nombre: '- Packaging', orden: 5, esSubtotal: false },
-      
-      // Nivel 3 - Contribución Marginal
-      { nivelCodigo: 'CM', nombre: 'Contribución Marginal', orden: 1, esResultado: true },
-      { nivelCodigo: 'CM', nombre: 'Gastos Operativos', orden: 2, esSubtotal: false },
-      { nivelCodigo: 'CM', nombre: 'Personal', orden: 3, esSubtotal: false },
-      { nivelCodigo: 'CM', nombre: 'Estructura', orden: 4, esSubtotal: false },
-      { nivelCodigo: 'CM', nombre: 'Comercial', orden: 5, esSubtotal: false },
-      { nivelCodigo: 'CM', nombre: 'Admin', orden: 6, esSubtotal: false },
-      
-      // Nivel 4 - Profit
-      { nivelCodigo: 'PF', nombre: 'PROFIT', orden: 1, esResultado: true }
-    ]
-
     // Obtener niveles creados
     const nivelesRes = await fetch('/api/pl/niveles')
     const niveles = await nivelesRes.json()
+
+    // Crear cuentas básicas
+    const cuentasData = [
+      // VENTA BRUTA
+      { nivelCodigo: 'VB', nombre: 'Venta Total', orden: 1 },
+      
+      // COSTO DE VENTA
+      { nivelCodigo: 'CV', nombre: 'Costos de Ventas', orden: 1 },
+      
+      // CMV
+      { nivelCodigo: 'CM', nombre: 'CMV Total', orden: 1 },
+      
+      // VENTA NETA
+      { nivelCodigo: 'VN', nombre: 'Venta Neta', orden: 1, esResultado: true },
+      
+      // GASTOS OPERATIVOS
+      { nivelCodigo: 'GO', nombre: 'Gastos Operativos', orden: 1 },
+      
+      // PROFIT
+      { nivelCodigo: 'PF', nombre: 'PROFIT', orden: 1, esResultado: true }
+    ]
 
     for (const cuenta of cuentasData) {
       const nivel = niveles.find((n: NivelPL) => n.codigo === cuenta.nivelCodigo)
@@ -173,33 +195,6 @@ export function PLModule() {
     }
   }
 
-  const addCuenta = async (nivelId: string, nombre: string) => {
-    try {
-      await fetch('/api/pl/cuentas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nivelId,
-          nombre,
-          orden: 999
-        })
-      })
-      setNewCuentaName('')
-      fetchData()
-    } catch (error) {
-      console.error('Error adding cuenta:', error)
-    }
-  }
-
-  const deleteCuenta = async (id: string) => {
-    try {
-      await fetch(`/api/pl/cuentas?id=${id}`, { method: 'DELETE' })
-      fetchData()
-    } catch (error) {
-      console.error('Error deleting cuenta:', error)
-    }
-  }
-
   const toggleCuenta = (id: string) => {
     const newSet = new Set(expandedCuentas)
     if (newSet.has(id)) {
@@ -210,12 +205,12 @@ export function PLModule() {
     setExpandedCuentas(newSet)
   }
 
-  const formatCurrency = (value: number | null) => {
+  const formatCurrency = (value: number | null | undefined) => {
     if (value === null || value === undefined) return '-'
     return `$${value.toLocaleString()}`
   }
 
-  const formatPercent = (value: number | null) => {
+  const formatPercent = (value: number | null | undefined) => {
     if (value === null || value === undefined) return '-'
     return `${value.toFixed(1)}%`
   }
@@ -224,6 +219,24 @@ export function PLModule() {
     return cuenta.valores?.find((v: PLValor) => 
       v.periodo === plFiltros.periodo && v.tipoVista === plFiltros.tipoVista
     )
+  }
+
+  // Obtener el valor real desde el cashflow
+  const getRealFromCashflow = (cuentaId: string): number => {
+    return valoresReales[cuentaId] || 0
+  }
+
+  // Calcular totales para porcentajes
+  const getTotalVentas = (tipo: 'teórico' | 'real'): number => {
+    const cuentaVB = cuentas.find(c => c.nivelId === niveles.find(n => n.codigo === 'VB')?.id)
+    if (!cuentaVB) return 0
+    
+    if (tipo === 'teórico') {
+      const valor = getValorForCuenta(cuentaVB)
+      return valor?.forecastMonto || 0
+    } else {
+      return getRealFromCashflow(cuentaVB.id)
+    }
   }
 
   if (loading) {
@@ -240,7 +253,7 @@ export function PLModule() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Estado de Resultados (P&L)</h2>
-          <p className="text-gray-400">Plan de cuentas editable con cálculos automáticos</p>
+          <p className="text-gray-400">Teórico editable · Real desde Cashflow</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -265,6 +278,62 @@ export function PLModule() {
             <option value="trimestral">Trimestral</option>
             <option value="anual">Anual</option>
           </select>
+          <button
+            onClick={fetchData}
+            className="p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg text-gray-400 hover:text-white transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Info banner */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-3">
+        <Info className="w-5 h-5 text-blue-400 flex-shrink-0" />
+        <div className="text-sm text-blue-300">
+          <strong>Teórico:</strong> Carga manual de proyecciones. 
+          <strong className="ml-2">Real:</strong> Se calcula automáticamente desde el Cashflow según las asociaciones del Plan de Cuentas.
+        </div>
+      </div>
+
+      {/* Cards de resumen */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-green-400 mb-2">
+            <TrendingUp className="w-5 h-5" />
+            <span className="text-sm font-medium">Ventas (Teórico)</span>
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {formatCurrency(getTotalVentas('teórico'))}
+          </div>
+        </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-green-400 mb-2">
+            <TrendingUp className="w-5 h-5" />
+            <span className="text-sm font-medium">Ventas (Real)</span>
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {formatCurrency(getTotalVentas('real'))}
+          </div>
+        </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-blue-400 mb-2">
+            <DollarSign className="w-5 h-5" />
+            <span className="text-sm font-medium">Diferencia</span>
+          </div>
+          <div className={`text-2xl font-bold ${getTotalVentas('real') - getTotalVentas('teórico') >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {formatCurrency(getTotalVentas('real') - getTotalVentas('teórico'))}
+          </div>
+        </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-yellow-400 mb-2">
+            <TrendingDown className="w-5 h-5" />
+            <span className="text-sm font-medium">% Cumplimiento</span>
+          </div>
+          <div className={`text-2xl font-bold ${getTotalVentas('real') / getTotalVentas('teórico') * 100 >= 100 ? 'text-green-400' : 'text-yellow-400'}`}>
+            {getTotalVentas('teórico') > 0 ? `${((getTotalVentas('real') / getTotalVentas('teórico')) * 100).toFixed(1)}%` : '-'}
+          </div>
         </div>
       </div>
 
@@ -273,12 +342,11 @@ export function PLModule() {
         {/* Header */}
         <div className="grid grid-cols-12 gap-2 p-3 bg-[#0d0d0d] border-b border-white/10 text-sm font-medium text-gray-400">
           <div className="col-span-4">Concepto</div>
-          <div className="col-span-2 text-center">Forecast $</div>
-          <div className="col-span-1 text-center">Fc %</div>
+          <div className="col-span-2 text-center">Teórico $</div>
+          <div className="col-span-1 text-center">Teó %</div>
           <div className="col-span-2 text-center">Real $</div>
           <div className="col-span-1 text-center">Re %</div>
-          <div className="col-span-1 text-center">Dif $</div>
-          <div className="col-span-1 text-center">Atribución</div>
+          <div className="col-span-2 text-center">Diferencia</div>
         </div>
 
         {/* Niveles */}
@@ -295,7 +363,9 @@ export function PLModule() {
               {/* Cuentas del Nivel */}
               {cuentasNivel.map((cuenta) => {
                 const valor = getValorForCuenta(cuenta)
+                const realValue = getRealFromCashflow(cuenta.id)
                 const hasSubcuentas = cuenta.subcuentas && cuenta.subcuentas.length > 0
+                const hasItems = cuenta.cashflowItems && cuenta.cashflowItems.length > 0
                 
                 return (
                   <div key={cuenta.id}>
@@ -305,29 +375,27 @@ export function PLModule() {
                       }`}
                     >
                       <div className="col-span-4 flex items-center gap-2">
-                        {hasSubcuentas && (
-                          <button onClick={() => toggleCuenta(cuenta.id)}>
+                        {(hasSubcuentas || hasItems) && (
+                          <button onClick={() => toggleCuenta(cuenta.id)} className="text-gray-400 hover:text-white">
                             {expandedCuentas.has(cuenta.id) ? (
-                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                              <ChevronDown className="w-4 h-4" />
                             ) : (
-                              <ChevronRight className="w-4 h-4 text-gray-400" />
+                              <ChevronRight className="w-4 h-4" />
                             )}
                           </button>
                         )}
                         <span className={`${cuenta.esResultado ? 'text-green-400 font-semibold' : cuenta.esSubtotal ? 'text-blue-400' : 'text-white'}`}>
                           {cuenta.nombre}
                         </span>
-                        {!cuenta.esResultado && (
-                          <button 
-                            onClick={() => deleteCuenta(cuenta.id)}
-                            className="opacity-0 group-hover:opacity-100 hover:text-red-400"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                        {hasItems && (
+                          <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs rounded flex items-center gap-1">
+                            <Link className="w-3 h-3" />
+                            {cuenta.cashflowItems!.length}
+                          </span>
                         )}
                       </div>
                       
-                      {/* Forecast $ */}
+                      {/* Teórico $ - Editable */}
                       <div className="col-span-2 text-center">
                         <EditableValue
                           value={valor?.forecastMonto}
@@ -336,49 +404,55 @@ export function PLModule() {
                         />
                       </div>
                       
-                      {/* Fc % */}
+                      {/* Teórico % */}
                       <div className="col-span-1 text-center text-sm text-gray-400">
                         {formatPercent(valor?.forecastPorcentaje)}
                       </div>
                       
-                      {/* Real $ */}
+                      {/* Real $ - Desde Cashflow */}
                       <div className="col-span-2 text-center">
-                        <EditableValue
-                          value={valor?.realMonto}
-                          onSave={(val) => updateValor(cuenta.id, 'realMonto', val)}
-                          isCurrency
-                        />
+                        <span className={`text-sm ${realValue > 0 ? 'text-white' : 'text-gray-500'}`}>
+                          {formatCurrency(realValue)}
+                        </span>
                       </div>
                       
-                      {/* Re % */}
+                      {/* Real % */}
                       <div className="col-span-1 text-center text-sm text-gray-400">
-                        {formatPercent(valor?.realPorcentaje)}
+                        {getTotalVentas('real') > 0 ? formatPercent((realValue / getTotalVentas('real')) * 100) : '-'}
                       </div>
                       
-                      {/* Dif $ */}
-                      <div className="col-span-1 text-center">
-                        <DiferenciaCell forecast={valor?.forecastMonto} real={valor?.realMonto} />
-                      </div>
-                      
-                      {/* Atribución */}
-                      <div className="col-span-1 text-center">
-                        <input
-                          type="text"
-                          value={valor?.atribucion || ''}
-                          onChange={(e) => updateValor(cuenta.id, 'atribucion', e.target.value as any)}
-                          placeholder="-"
-                          className="w-full px-1 py-0.5 bg-transparent text-center text-sm text-gray-400 focus:outline-none"
-                        />
+                      {/* Diferencia */}
+                      <div className="col-span-2 text-center">
+                        <DiferenciaCell forecast={valor?.forecastMonto} real={realValue} />
                       </div>
                     </div>
+                    
+                    {/* Items de Cashflow asociados */}
+                    {hasItems && expandedCuentas.has(cuenta.id) && (
+                      <div className="bg-[#0d0d0d] px-4 pb-2">
+                        {cuenta.cashflowItems!.map((item) => (
+                          <div 
+                            key={item.id}
+                            className="flex items-center gap-2 p-2 pl-6 text-sm text-gray-400 border-l-2 border-green-500/30 ml-4"
+                          >
+                            <Link className="w-3 h-3 text-green-400" />
+                            <span>{item.nombre}</span>
+                            {item.categoria && (
+                              <span className="text-xs text-gray-500">({item.categoria.nombre})</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     
                     {/* Subcuentas */}
                     {hasSubcuentas && expandedCuentas.has(cuenta.id) && cuenta.subcuentas.map((sub) => {
                       const subValor = getValorForCuenta(sub)
+                      const subReal = getRealFromCashflow(sub.id)
                       return (
                         <div 
                           key={sub.id}
-                          className="grid grid-cols-12 gap-2 p-3 pl-8 items-center hover:bg-white/5"
+                          className="grid grid-cols-12 gap-2 p-3 pl-8 items-center hover:bg-white/5 bg-[#0d0d0d]"
                         >
                           <div className="col-span-4 text-gray-400 text-sm">{sub.nombre}</div>
                           <div className="col-span-2 text-center">
@@ -392,25 +466,13 @@ export function PLModule() {
                             {formatPercent(subValor?.forecastPorcentaje)}
                           </div>
                           <div className="col-span-2 text-center">
-                            <EditableValue
-                              value={subValor?.realMonto}
-                              onSave={(val) => updateValor(sub.id, 'realMonto', val)}
-                              isCurrency
-                            />
+                            <span className="text-sm text-gray-400">{formatCurrency(subReal)}</span>
                           </div>
                           <div className="col-span-1 text-center text-sm text-gray-400">
-                            {formatPercent(subValor?.realPorcentaje)}
+                            {getTotalVentas('real') > 0 ? formatPercent((subReal / getTotalVentas('real')) * 100) : '-'}
                           </div>
-                          <div className="col-span-1 text-center">
-                            <DiferenciaCell forecast={subValor?.forecastMonto} real={subValor?.realMonto} />
-                          </div>
-                          <div className="col-span-1 text-center">
-                            <input
-                              type="text"
-                              value={subValor?.atribucion || ''}
-                              placeholder="-"
-                              className="w-full px-1 py-0.5 bg-transparent text-center text-sm text-gray-400 focus:outline-none"
-                            />
+                          <div className="col-span-2 text-center">
+                            <DiferenciaCell forecast={subValor?.forecastMonto} real={subReal} />
                           </div>
                         </div>
                       )
@@ -418,34 +480,20 @@ export function PLModule() {
                   </div>
                 )
               })}
-              
-              {/* Agregar cuenta */}
-              <div className="p-2 bg-[#0d0d0d]">
-                <div className="flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-gray-500" />
-                  <input
-                    type="text"
-                    value={newCuentaName}
-                    onChange={(e) => setNewCuentaName(e.target.value)}
-                    placeholder="Agregar nueva cuenta..."
-                    className="flex-1 px-2 py-1 bg-transparent text-sm text-gray-400 focus:outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newCuentaName.trim()) {
-                        addCuenta(nivel.id, newCuentaName.trim())
-                      }
-                    }}
-                  />
-                </div>
-              </div>
             </div>
           )
         })}
+      </div>
+      
+      {/* Nota */}
+      <div className="text-center text-sm text-gray-500">
+        Para crear, editar o eliminar cuentas, ir a <strong className="text-blue-400">Configuración → Plan de Cuentas</strong>
       </div>
     </div>
   )
 }
 
-// Componente de valor editable
+// Componente de valor editable (solo para Teórico)
 function EditableValue({ 
   value, 
   onSave, 
@@ -468,7 +516,7 @@ function EditableValue({
           onSave(Number(editValue) || 0)
           setIsEditing(false)
         }}
-        className="w-20 px-1 py-0.5 bg-[#1a1a1a] border border-blue-500 rounded text-white text-sm text-center focus:outline-none"
+        className="w-24 px-2 py-1 bg-[#1a1a1a] border border-blue-500 rounded text-white text-sm text-center focus:outline-none"
         autoFocus
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -487,7 +535,7 @@ function EditableValue({
         setEditValue(value?.toString() || '')
         setIsEditing(true)
       }}
-      className="px-2 py-1 hover:bg-white/10 rounded text-white text-sm"
+      className="px-2 py-1 hover:bg-blue-500/20 rounded text-white text-sm border border-transparent hover:border-blue-500/50 transition-colors"
     >
       {value === null || value === undefined ? '-' : isCurrency ? `$${value.toLocaleString()}` : value}
     </button>
@@ -501,9 +549,16 @@ function DiferenciaCell({ forecast, real }: { forecast: number | null | undefine
   }
   
   const dif = real - forecast
+  const pct = forecast > 0 ? ((dif / forecast) * 100).toFixed(1) : '0'
+  
   return (
-    <span className={`text-sm ${dif >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-      {dif >= 0 ? '+' : ''}{dif.toLocaleString()}
-    </span>
+    <div className="flex flex-col items-center">
+      <span className={`text-sm font-medium ${dif >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        {dif >= 0 ? '+' : ''}{dif.toLocaleString()}
+      </span>
+      <span className={`text-xs ${dif >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+        ({dif >= 0 ? '+' : ''}{pct}%)
+      </span>
+    </div>
   )
 }

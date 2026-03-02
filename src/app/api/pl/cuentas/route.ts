@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const nivelId = searchParams.get('nivelId')
+    const includeItems = searchParams.get('includeItems')
 
     const where: any = {}
     if (nivelId) where.nivelId = nivelId
@@ -16,11 +17,23 @@ export async function GET(request: NextRequest) {
         nivel: true,
         subcuentas: {
           include: {
-            valores: true
+            valores: true,
+            cashflowItems: {
+              include: {
+                categoria: true
+              }
+            }
           }
         },
         valores: true,
-        padre: true
+        padre: true,
+        ...(includeItems === 'true' && {
+          cashflowItems: {
+            include: {
+              categoria: true
+            }
+          }
+        })
       },
       orderBy: [{ nivelId: 'asc' }, { orden: 'asc' }]
     })

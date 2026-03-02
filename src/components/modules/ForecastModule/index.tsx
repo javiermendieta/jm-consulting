@@ -86,10 +86,23 @@ export function ForecastModule() {
   }, [])
 
   useEffect(() => {
+    // Initialize forecast data on mount
+    initForecastData()
+  }, [])
+
+  useEffect(() => {
     if (forecastFiltros.fechaInicio && forecastFiltros.fechaFin) {
       fetchData()
     }
   }, [forecastFiltros.fechaInicio, forecastFiltros.fechaFin])
+
+  const initForecastData = async () => {
+    try {
+      await fetch('/api/forecast/init', { method: 'POST' })
+    } catch (error) {
+      console.error('Error initializing forecast:', error)
+    }
+  }
 
   const fetchData = async () => {
     if (!forecastFiltros.fechaInicio || !forecastFiltros.fechaFin) return
@@ -112,10 +125,11 @@ export function ForecastModule() {
         tiposRes.json()
       ])
 
-      // Si no hay datos maestros, crear datos de ejemplo
+      // Si no hay datos maestros, inicializar y reintentar
       if (restData.length === 0) {
-        await createSeedData()
-        fetchData()
+        await fetch('/api/forecast/init', { method: 'POST' })
+        // Reintentar después de inicializar
+        setTimeout(() => fetchData(), 500)
         return
       }
 

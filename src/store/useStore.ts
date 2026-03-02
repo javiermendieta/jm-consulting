@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export type Module = 'dashboard' | 'consulting' | 'forecast' | 'pl' | 'cashflow' | 'comparativos' | 'config'
+export type ConfigTab = 'plan-cuentas' | 'restaurantes' | 'canales' | 'turnos' | 'tipos'
 
 interface ProyectoSeleccionado {
   id: string
@@ -26,6 +27,10 @@ interface AppState {
   // Navegación
   currentModule: Module
   setModule: (module: Module) => void
+  
+  // Config tabs
+  currentConfigTab: ConfigTab
+  setConfigTab: (tab: ConfigTab) => void
   
   // Consultoría
   proyectoSeleccionado: ProyectoSeleccionado | null
@@ -55,6 +60,10 @@ export const useStore = create<AppState>((set) => ({
   // Navegación
   currentModule: 'dashboard',
   setModule: (module) => set({ currentModule: module }),
+  
+  // Config tabs
+  currentConfigTab: 'plan-cuentas',
+  setConfigTab: (tab) => set({ currentConfigTab: tab }),
   
   // Consultoría
   proyectoSeleccionado: null,
