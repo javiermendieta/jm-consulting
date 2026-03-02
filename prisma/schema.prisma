@@ -1,14 +1,14 @@
 // Prisma Schema - JM CONSULTING
-// Para desarrollo local usa SQLite (por defecto)
-// Para producción (Supabase/Vercel) cambia provider a "postgresql"
+// Configurado para PostgreSQL (Supabase)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider  = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ==================== CONSULTORÍA ====================
