@@ -86,14 +86,18 @@ export function ForecastModule() {
   }, [])
 
   useEffect(() => {
-    fetchData()
+    if (forecastFiltros.fechaInicio && forecastFiltros.fechaFin) {
+      fetchData()
+    }
   }, [forecastFiltros.fechaInicio, forecastFiltros.fechaFin])
 
   const fetchData = async () => {
+    if (!forecastFiltros.fechaInicio || !forecastFiltros.fechaFin) return
+    
     setLoading(true)
     try {
       const [entriesRes, restRes, canalesRes, turnosRes, tiposRes] = await Promise.all([
-        fetch(`/api/forecast/entries?fechaInicio=${forecastFiltros.fechaInicio?.toISOString()}&fechaFin=${forecastFiltros.fechaFin?.toISOString()}`),
+        fetch(`/api/forecast/entries?fechaInicio=${forecastFiltros.fechaInicio.toISOString()}&fechaFin=${forecastFiltros.fechaFin.toISOString()}`),
         fetch('/api/forecast/restaurantes'),
         fetch('/api/forecast/canales'),
         fetch('/api/forecast/turnos'),
