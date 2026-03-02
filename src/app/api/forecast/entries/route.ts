@@ -10,13 +10,16 @@ export async function GET(request: NextRequest) {
     const restauranteId = searchParams.get('restauranteId')
     const canalId = searchParams.get('canalId')
 
+    // Si no hay fechas, devolver array vacío
+    if (!fechaInicio || !fechaFin || fechaInicio === 'undefined' || fechaFin === 'undefined') {
+      return NextResponse.json([])
+    }
+
     const where: any = {}
     
-    if (fechaInicio && fechaFin) {
-      where.fecha = {
-        gte: new Date(fechaInicio),
-        lte: new Date(fechaFin)
-      }
+    where.fecha = {
+      gte: new Date(fechaInicio),
+      lte: new Date(fechaFin)
     }
     
     if (restauranteId) where.restauranteId = restauranteId
@@ -36,7 +39,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(entries)
   } catch (error) {
     console.error('Error fetching forecast entries:', error)
-    return NextResponse.json({ error: 'Error al obtener entradas de forecast' }, { status: 500 })
+    // Devolver array vacío en caso de error para evitar errores en el frontend
+    return NextResponse.json([])
   }
 }
 

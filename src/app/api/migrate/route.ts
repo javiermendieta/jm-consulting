@@ -127,16 +127,47 @@ export async function POST() {
     // 8. Actualizar ForecastEntry con valores válidos
     try {
       await db.$executeRawUnsafe(`
-        UPDATE "ForecastEntry" SET "restauranteId" = 'rest-1' WHERE "restauranteId" IS NULL;
+        UPDATE "ForecastEntry" SET "restauranteId" = 'rest-1' WHERE "restauranteId" IS NULL OR "restauranteId" = '';
       `)
     } catch (e: any) {}
     
     try {
       await db.$executeRawUnsafe(`
-        UPDATE "ForecastEntry" SET "tipoDiaId" = 'td-1' WHERE "tipoDiaId" IS NULL;
+        UPDATE "ForecastEntry" SET "tipoDiaId" = 'td-1' WHERE "tipoDiaId" IS NULL OR "tipoDiaId" = '';
       `)
     } catch (e: any) {}
     results.push('ForecastEntry actualizado')
+
+    // 9. Crear restricciones de clave foránea si no existen
+    try {
+      await db.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ForecastEntry_restauranteId_fkey') THEN
+            ALTER TABLE "ForecastEntry" ADD CONSTRAINT "ForecastEntry_restauranteId_fkey" 
+            FOREIGN KEY ("restauranteId") REFERENCES "Restaurante"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+          END IF;
+        END $$;
+      `)
+      results.push('FK Restaurante creada')
+    } catch (e: any) {
+      results.push(`FK Restaurante: ${e.message?.substring(0, 50)}`)
+    }
+
+    try {
+      await db.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ForecastEntry_tipoDiaId_fkey') THEN
+            ALTER TABLE "ForecastEntry" ADD CONSTRAINT "ForecastEntry_tipoDiaId_fkey" 
+            FOREIGN KEY ("tipoDiaId") REFERENCES "TipoDia"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+          END IF;
+        END $$;
+      `)
+      results.push('FK TipoDia creada')
+    } catch (e: any) {
+      results.push(`FK TipoDia: ${e.message?.substring(0, 50)}`)
+    }
 
     // Verificar resultado
     let restaurantes = 0
