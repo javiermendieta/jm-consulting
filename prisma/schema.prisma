@@ -197,8 +197,6 @@ model PLValor {
   atribucion          String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
-  
-  @@unique([cuentaId, periodo, tipoVista, cashflowItemId])
 }
 
 // ==================== CONFIGURACIÓN ====================

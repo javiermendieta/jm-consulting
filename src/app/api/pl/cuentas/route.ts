@@ -27,13 +27,12 @@ export async function GET(request: NextRequest) {
         },
         valores: true,
         padre: true,
-        ...(includeItems === 'true' && {
-          cashflowItems: {
-            include: {
-              categoria: true
-            }
+        cashflowItems: includeItems === 'true' ? {
+          include: {
+            categoria: true,
+            registros: true
           }
-        })
+        } : false
       },
       orderBy: [{ nivelId: 'asc' }, { orden: 'asc' }]
     })
