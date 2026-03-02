@@ -7,9 +7,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const periodo = searchParams.get('periodo')
     const tipoVista = searchParams.get('tipoVista') || 'mensual'
+    const cuentaId = searchParams.get('cuentaId')
 
     const where: any = { tipoVista }
     if (periodo) where.periodo = periodo
+    if (cuentaId) where.cuentaId = cuentaId
 
     const valores = await db.pLValor.findMany({
       where,
@@ -35,13 +37,23 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     
+    // Construir la clave única
+    const uniqueKey: any = {
+      cuentaId: data.cuentaId,
+      periodo: data.periodo,
+      tipoVista: data.tipoVista
+    }
+    
+    // Si hay cashflowItemId, incluirlo en la clave única
+    if (data.cashflowItemId) {
+      uniqueKey.cashflowItemId = data.cashflowItemId
+    } else {
+      uniqueKey.cashflowItemId = null
+    }
+
     const valor = await db.pLValor.upsert({
       where: {
-        cuentaId_periodo_tipoVista: {
-          cuentaId: data.cuentaId,
-          periodo: data.periodo,
-          tipoVista: data.tipoVista
-        }
+        cuentaId_periodo_tipoVista_cashflowItemId: uniqueKey
       },
       update: {
         forecastMonto: data.forecastMonto,
@@ -52,6 +64,7 @@ export async function POST(request: NextRequest) {
       },
       create: {
         cuentaId: data.cuentaId,
+        cashflowItemId: data.cashflowItemId || null,
         periodo: data.periodo,
         tipoVista: data.tipoVista,
         forecastMonto: data.forecastMonto,

@@ -31,13 +31,14 @@ interface CuentaPL {
   esResultado: boolean
   subcuentas: CuentaPL[]
   valores: PLValor[]
-  cashflowItems?: CashflowItem[]
+  cashflowItems: CashflowItem[]
   nivel?: NivelPL
 }
 
 interface PLValor {
   id: string
   cuentaId: string
+  cashflowItemId: string | null
   periodo: string
   tipoVista: string
   forecastMonto: number | null
@@ -51,10 +52,19 @@ interface CashflowItem {
   id: string
   nombre: string
   categoria?: { nombre: string; tipo: string }
+  registros?: CashflowEntry[]
+}
+
+interface CashflowEntry {
+  id: string
+  itemId: string
+  mes: number
+  anio: number
+  monto: number
 }
 
 interface ValoresReales {
-  [cuentaId: string]: number
+  [key: string]: number
 }
 
 export function PLModule() {
@@ -62,6 +72,7 @@ export function PLModule() {
   const [niveles, setNiveles] = useState<NivelPL[]>([])
   const [cuentas, setCuentas] = useState<CuentaPL[]>([])
   const [valoresReales, setValoresReales] = useState<ValoresReales>({})
+  const [valoresTeoricosItems, setValoresTeoricosItems] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [expandedCuentas, setExpandedCuentas] = useState<Set<string>>(new Set())
 
@@ -84,30 +95,37 @@ export function PLModule() {
     try {
       const { mes, anio } = getMesAnio()
       
-      const [nivelesRes, cuentasRes, realesRes] = await Promise.all([
+      const [nivelesRes, cuentasRes, realesRes, valoresRes] = await Promise.all([
         fetch('/api/pl/niveles'),
         fetch(`/api/pl/cuentas?includeItems=true`),
-        fetch(`/api/pl/reales?mes=${mes}&anio=${anio}&tipoVista=${plFiltros.tipoVista}`)
+        fetch(`/api/pl/reales?mes=${mes}&anio=${anio}&tipoVista=${plFiltros.tipoVista}`),
+        fetch(`/api/pl/valores?periodo=${plFiltros.periodo}&tipoVista=${plFiltros.tipoVista}`)
       ])
 
-      let nivelesData = await nivelesRes.json()
-      let cuentasData = await cuentasRes.json()
+      const nivelesData = await nivelesRes.json()
+      const cuentasData = await cuentasRes.json()
       const realesData = await realesRes.json()
+      const valoresData = await valoresRes.json()
 
       // Si no hay niveles, crear estructura inicial
       if (nivelesData.length === 0) {
         await createInitialStructure()
-        const [newNiveles, newCuentas] = await Promise.all([
-          fetch('/api/pl/niveles').then(r => r.json()),
-          fetch('/api/pl/cuentas').then(r => r.json())
-        ])
-        nivelesData = newNiveles
-        cuentasData = newCuentas
+        fetchData()
+        return
       }
 
       setNiveles(nivelesData)
       setCuentas(cuentasData)
       setValoresReales(realesData)
+      
+      // Mapear valores teóricos de items
+      const itemValues: Record<string, number> = {}
+      valoresData.forEach((v: PLValor) => {
+        if (v.cashflowItemId) {
+          itemValues[`${v.cuentaId}-${v.cashflowItemId}`] = v.forecastMonto || 0
+        }
+      })
+      setValoresTeoricosItems(itemValues)
     } catch (error) {
       console.error('Error fetching P&L data:', error)
     } finally {
@@ -116,7 +134,6 @@ export function PLModule() {
   }
 
   const createInitialStructure = async () => {
-    // Crear los niveles fijos según la estructura requerida
     const nivelesData = [
       { codigo: 'VB', nombre: 'VENTA BRUTA', orden: 1 },
       { codigo: 'CV', nombre: 'COSTO DE VENTA', orden: 2 },
@@ -133,60 +150,20 @@ export function PLModule() {
         body: JSON.stringify(nivel)
       })
     }
-
-    // Obtener niveles creados
-    const nivelesRes = await fetch('/api/pl/niveles')
-    const niveles = await nivelesRes.json()
-
-    // Crear cuentas básicas
-    const cuentasData = [
-      // VENTA BRUTA
-      { nivelCodigo: 'VB', nombre: 'Venta Total', orden: 1 },
-      
-      // COSTO DE VENTA
-      { nivelCodigo: 'CV', nombre: 'Costos de Ventas', orden: 1 },
-      
-      // CMV
-      { nivelCodigo: 'CM', nombre: 'CMV Total', orden: 1 },
-      
-      // VENTA NETA
-      { nivelCodigo: 'VN', nombre: 'Venta Neta', orden: 1, esResultado: true },
-      
-      // GASTOS OPERATIVOS
-      { nivelCodigo: 'GO', nombre: 'Gastos Operativos', orden: 1 },
-      
-      // PROFIT
-      { nivelCodigo: 'PF', nombre: 'PROFIT', orden: 1, esResultado: true }
-    ]
-
-    for (const cuenta of cuentasData) {
-      const nivel = niveles.find((n: NivelPL) => n.codigo === cuenta.nivelCodigo)
-      if (nivel) {
-        await fetch('/api/pl/cuentas', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nivelId: nivel.id,
-            nombre: cuenta.nombre,
-            orden: cuenta.orden,
-            esSubtotal: cuenta.esSubtotal || false,
-            esResultado: cuenta.esResultado || false
-          })
-        })
-      }
-    }
   }
 
-  const updateValor = async (cuentaId: string, field: string, value: number) => {
+  // Actualizar valor teórico de cuenta o item
+  const updateValor = async (cuentaId: string, cashflowItemId: string | null, value: number) => {
     try {
       await fetch('/api/pl/valores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cuentaId,
+          cashflowItemId,
           periodo: plFiltros.periodo,
           tipoVista: plFiltros.tipoVista,
-          [field]: value
+          forecastMonto: value
         })
       })
       fetchData()
@@ -215,15 +192,41 @@ export function PLModule() {
     return `${value.toFixed(1)}%`
   }
 
-  const getValorForCuenta = (cuenta: CuentaPL): PLValor | undefined => {
-    return cuenta.valores?.find((v: PLValor) => 
-      v.periodo === plFiltros.periodo && v.tipoVista === plFiltros.tipoVista
+  // Obtener valor teórico de una cuenta (suma de items o valor directo)
+  const getTeoricoCuenta = (cuenta: CuentaPL): number => {
+    const { mes, anio } = getMesAnio()
+    
+    // Si tiene items, sumar los valores teóricos de los items
+    if (cuenta.cashflowItems && cuenta.cashflowItems.length > 0) {
+      return cuenta.cashflowItems.reduce((sum, item) => {
+        const key = `${cuenta.id}-${item.id}`
+        return sum + (valoresTeoricosItems[key] || 0)
+      }, 0)
+    }
+    
+    // Si no tiene items, usar el valor directo de la cuenta
+    const valor = cuenta.valores?.find((v: PLValor) => 
+      v.periodo === plFiltros.periodo && v.tipoVista === plFiltros.tipoVista && !v.cashflowItemId
     )
+    return valor?.forecastMonto || 0
   }
 
-  // Obtener el valor real desde el cashflow
-  const getRealFromCashflow = (cuentaId: string): number => {
-    return valoresReales[cuentaId] || 0
+  // Obtener el valor real desde el cashflow para un item específico
+  const getRealItem = (item: CashflowItem): number => {
+    const { mes, anio } = getMesAnio()
+    return item.registros?.filter(r => r.mes === mes && r.anio === anio)
+      .reduce((sum, r) => sum + (r.monto || 0), 0) || 1
+  }
+
+  // Obtener el valor real de una cuenta (suma de items)
+  const getRealCuenta = (cuenta: CuentaPL): number => {
+    return valoresReales[cuenta.id] || 1
+  }
+
+  // Obtener valor teórico de un item
+  const getTeoricoItem = (cuentaId: string, itemId: string): number => {
+    const key = `${cuentaId}-${itemId}`
+    return valoresTeoricosItems[key] || 1
   }
 
   // Calcular totales para porcentajes
@@ -232,10 +235,9 @@ export function PLModule() {
     if (!cuentaVB) return 0
     
     if (tipo === 'teórico') {
-      const valor = getValorForCuenta(cuentaVB)
-      return valor?.forecastMonto || 0
+      return getTeoricoCuenta(cuentaVB)
     } else {
-      return getRealFromCashflow(cuentaVB.id)
+      return getRealCuenta(cuentaVB)
     }
   }
 
@@ -292,8 +294,8 @@ export function PLModule() {
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-3">
         <Info className="w-5 h-5 text-blue-400 flex-shrink-0" />
         <div className="text-sm text-blue-300">
-          <strong>Teórico:</strong> Carga manual de proyecciones. 
-          <strong className="ml-2">Real:</strong> Se calcula automáticamente desde el Cashflow según las asociaciones del Plan de Cuentas.
+          <strong>Teórico:</strong> Carga manual por item. Los totales se calculan automáticamente.
+          <strong className="ml-2">Real:</strong> Se calcula desde el Cashflow.
         </div>
       </div>
 
@@ -343,10 +345,9 @@ export function PLModule() {
         <div className="grid grid-cols-12 gap-2 p-3 bg-[#0d0d0d] border-b border-white/10 text-sm font-medium text-gray-400">
           <div className="col-span-4">Concepto</div>
           <div className="col-span-2 text-center">Teórico $</div>
-          <div className="col-span-1 text-center">Teó %</div>
           <div className="col-span-2 text-center">Real $</div>
-          <div className="col-span-1 text-center">Re %</div>
           <div className="col-span-2 text-center">Diferencia</div>
+          <div className="col-span-2 text-center">% Cumpl.</div>
         </div>
 
         {/* Niveles */}
@@ -362,21 +363,24 @@ export function PLModule() {
               
               {/* Cuentas del Nivel */}
               {cuentasNivel.map((cuenta) => {
-                const valor = getValorForCuenta(cuenta)
-                const realValue = getRealFromCashflow(cuenta.id)
-                const hasSubcuentas = cuenta.subcuentas && cuenta.subcuentas.length > 0
                 const hasItems = cuenta.cashflowItems && cuenta.cashflowItems.length > 0
+                const teoricoTotal = getTeoricoCuenta(cuenta)
+                const realTotal = getRealCuenta(cuenta)
                 
                 return (
                   <div key={cuenta.id}>
+                    {/* Fila de la cuenta */}
                     <div 
                       className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-white/5 ${
-                        cuenta.esResultado ? 'bg-green-500/10' : cuenta.esSubtotal ? 'bg-blue-500/10' : ''
+                        cuenta.esResultado ? 'bg-green-500/10' : ''
                       }`}
                     >
                       <div className="col-span-4 flex items-center gap-2">
-                        {(hasSubcuentas || hasItems) && (
-                          <button onClick={() => toggleCuenta(cuenta.id)} className="text-gray-400 hover:text-white">
+                        {hasItems && (
+                          <button 
+                            onClick={() => toggleCuenta(cuenta.id)} 
+                            className="text-gray-400 hover:text-white p-1"
+                          >
                             {expandedCuentas.has(cuenta.id) ? (
                               <ChevronDown className="w-4 h-4" />
                             ) : (
@@ -384,99 +388,120 @@ export function PLModule() {
                             )}
                           </button>
                         )}
-                        <span className={`${cuenta.esResultado ? 'text-green-400 font-semibold' : cuenta.esSubtotal ? 'text-blue-400' : 'text-white'}`}>
+                        <span className={`${cuenta.esResultado ? 'text-green-400 font-semibold' : 'text-white'}`}>
                           {cuenta.nombre}
                         </span>
                         {hasItems && (
-                          <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs rounded flex items-center gap-1">
-                            <Link className="w-3 h-3" />
-                            {cuenta.cashflowItems!.length}
+                          <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
+                            {cuenta.cashflowItems!.length} items
                           </span>
                         )}
                       </div>
                       
-                      {/* Teórico $ - Editable */}
+                      {/* Teórico Total */}
                       <div className="col-span-2 text-center">
-                        <EditableValue
-                          value={valor?.forecastMonto}
-                          onSave={(val) => updateValor(cuenta.id, 'forecastMonto', val)}
-                          isCurrency
-                        />
-                      </div>
-                      
-                      {/* Teórico % */}
-                      <div className="col-span-1 text-center text-sm text-gray-400">
-                        {formatPercent(valor?.forecastPorcentaje)}
-                      </div>
-                      
-                      {/* Real $ - Desde Cashflow */}
-                      <div className="col-span-2 text-center">
-                        <span className={`text-sm ${realValue > 0 ? 'text-white' : 'text-gray-500'}`}>
-                          {formatCurrency(realValue)}
+                        <span className={`text-sm font-medium ${hasItems ? 'text-blue-400' : 'text-white'}`}>
+                          {formatCurrency(teoricoTotal)}
                         </span>
                       </div>
                       
-                      {/* Real % */}
-                      <div className="col-span-1 text-center text-sm text-gray-400">
-                        {getTotalVentas('real') > 0 ? formatPercent((realValue / getTotalVentas('real')) * 100) : '-'}
+                      {/* Real Total */}
+                      <div className="col-span-2 text-center">
+                        <span className={`text-sm ${realTotal > 0 ? 'text-white' : 'text-gray-500'}`}>
+                          {formatCurrency(realTotal)}
+                        </span>
                       </div>
                       
                       {/* Diferencia */}
                       <div className="col-span-2 text-center">
-                        <DiferenciaCell forecast={valor?.forecastMonto} real={realValue} />
+                        <DiferenciaCell forecast={teoricoTotal} real={realTotal} />
+                      </div>
+                      
+                      {/* % Cumplimiento */}
+                      <div className="col-span-2 text-center">
+                        <span className={`text-sm ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                          {teoricoTotal > 0 ? `${((realTotal / teoricoTotal) * 100).toFixed(1)}%` : '-'}
+                        </span>
                       </div>
                     </div>
                     
-                    {/* Items de Cashflow asociados */}
+                    {/* Items de Cashflow asociados - expandidos */}
                     {hasItems && expandedCuentas.has(cuenta.id) && (
-                      <div className="bg-[#0d0d0d] px-4 pb-2">
-                        {cuenta.cashflowItems!.map((item) => (
-                          <div 
-                            key={item.id}
-                            className="flex items-center gap-2 p-2 pl-6 text-sm text-gray-400 border-l-2 border-green-500/30 ml-4"
-                          >
-                            <Link className="w-3 h-3 text-green-400" />
-                            <span>{item.nombre}</span>
-                            {item.categoria && (
-                              <span className="text-xs text-gray-500">({item.categoria.nombre})</span>
-                            )}
+                      <div className="bg-[#0d0d0d]">
+                        {cuenta.cashflowItems!.map((item) => {
+                          const teoricoItem = getTeoricoItem(cuenta.id, item.id)
+                          const realItem = getRealItem(item)
+                          
+                          return (
+                            <div 
+                              key={item.id}
+                              className="grid grid-cols-12 gap-2 p-2 pl-10 items-center hover:bg-white/5 border-l-2 border-green-500/30 ml-4"
+                            >
+                              <div className="col-span-4 flex items-center gap-2">
+                                <Link className="w-3 h-3 text-green-400" />
+                                <span className="text-gray-300 text-sm">{item.nombre}</span>
+                              </div>
+                              
+                              {/* Teórico del item - editable */}
+                              <div className="col-span-2 text-center">
+                                <input
+                                  type="number"
+                                  value={teoricoItem || ''}
+                                  onChange={(e) => {
+                                    const newValues = { ...valoresTeoricosItems }
+                                    newValues[`${cuenta.id}-${item.id}`] = Number(e.target.value) || 0
+                                    setValoresTeoricosItems(newValues)
+                                  }}
+                                  onBlur={() => updateValor(cuenta.id, item.id, teoricoItem)}
+                                  className="w-20 px-2 py-1 bg-transparent border border-white/10 rounded text-white text-sm text-center focus:outline-none focus:border-blue-500"
+                                  placeholder="0"
+                                />
+                              </div>
+                              
+                              {/* Real del item - desde cashflow */}
+                              <div className="col-span-2 text-center">
+                                <span className="text-sm text-gray-400">
+                                  {formatCurrency(realItem)}
+                                </span>
+                              </div>
+                              
+                              {/* Diferencia item */}
+                              <div className="col-span-2 text-center">
+                                <DiferenciaCell forecast={teoricoItem} real={realItem} small />
+                              </div>
+                              
+                              {/* % Cumplimiento item */}
+                              <div className="col-span-2 text-center">
+                                <span className={`text-xs ${realItem >= teoricoItem ? 'text-green-400' : 'text-red-400'}`}>
+                                  {teoricoItem > 0 ? `${((realItem / teoricoItem) * 100).toFixed(0)}%` : '-'}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        
+                        {/* Total de items */}
+                        <div className="grid grid-cols-12 gap-2 p-2 pl-6 bg-[#1a1a1a] border-t border-white/10">
+                          <div className="col-span-4 text-gray-400 text-sm font-medium">
+                            Total {cuenta.nombre}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Subcuentas */}
-                    {hasSubcuentas && expandedCuentas.has(cuenta.id) && cuenta.subcuentas.map((sub) => {
-                      const subValor = getValorForCuenta(sub)
-                      const subReal = getRealFromCashflow(sub.id)
-                      return (
-                        <div 
-                          key={sub.id}
-                          className="grid grid-cols-12 gap-2 p-3 pl-8 items-center hover:bg-white/5 bg-[#0d0d0d]"
-                        >
-                          <div className="col-span-4 text-gray-400 text-sm">{sub.nombre}</div>
+                          <div className="col-span-2 text-center text-blue-400 text-sm font-medium">
+                            {formatCurrency(teoricoTotal)}
+                          </div>
+                          <div className="col-span-2 text-center text-white text-sm font-medium">
+                            {formatCurrency(realTotal)}
+                          </div>
                           <div className="col-span-2 text-center">
-                            <EditableValue
-                              value={subValor?.forecastMonto}
-                              onSave={(val) => updateValor(sub.id, 'forecastMonto', val)}
-                              isCurrency
-                            />
-                          </div>
-                          <div className="col-span-1 text-center text-sm text-gray-400">
-                            {formatPercent(subValor?.forecastPorcentaje)}
+                            <DiferenciaCell forecast={teoricoTotal} real={realTotal} small />
                           </div>
                           <div className="col-span-2 text-center">
-                            <span className="text-sm text-gray-400">{formatCurrency(subReal)}</span>
-                          </div>
-                          <div className="col-span-1 text-center text-sm text-gray-400">
-                            {getTotalVentas('real') > 0 ? formatPercent((subReal / getTotalVentas('real')) * 100) : '-'}
-                          </div>
-                          <div className="col-span-2 text-center">
-                            <DiferenciaCell forecast={subValor?.forecastMonto} real={subReal} />
+                            <span className={`text-xs font-medium ${realTotal >= teoricoTotal ? 'text-green-400' : 'text-red-400'}`}>
+                              {teoricoTotal > 0 ? `${((realTotal / teoricoTotal) * 100).toFixed(0)}%` : '-'}
+                            </span>
                           </div>
                         </div>
-                      )
-                    })}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -493,59 +518,10 @@ export function PLModule() {
   )
 }
 
-// Componente de valor editable (solo para Teórico)
-function EditableValue({ 
-  value, 
-  onSave, 
-  isCurrency = false 
-}: { 
-  value: number | null | undefined
-  onSave: (val: number) => void
-  isCurrency?: boolean
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState('')
-
-  if (isEditing) {
-    return (
-      <input
-        type="number"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={() => {
-          onSave(Number(editValue) || 0)
-          setIsEditing(false)
-        }}
-        className="w-24 px-2 py-1 bg-[#1a1a1a] border border-blue-500 rounded text-white text-sm text-center focus:outline-none"
-        autoFocus
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            onSave(Number(editValue) || 0)
-            setIsEditing(false)
-          }
-          if (e.key === 'Escape') setIsEditing(false)
-        }}
-      />
-    )
-  }
-
-  return (
-    <button
-      onClick={() => {
-        setEditValue(value?.toString() || '')
-        setIsEditing(true)
-      }}
-      className="px-2 py-1 hover:bg-blue-500/20 rounded text-white text-sm border border-transparent hover:border-blue-500/50 transition-colors"
-    >
-      {value === null || value === undefined ? '-' : isCurrency ? `$${value.toLocaleString()}` : value}
-    </button>
-  )
-}
-
 // Componente de diferencia
-function DiferenciaCell({ forecast, real }: { forecast: number | null | undefined; real: number | null | undefined }) {
+function DiferenciaCell({ forecast, real, small = false }: { forecast: number | null | undefined; real: number | null | undefined; small?: boolean }) {
   if (forecast === null || forecast === undefined || real === null || real === undefined) {
-    return <span className="text-gray-500 text-sm">-</span>
+    return <span className={`text-gray-500 ${small ? 'text-xs' : 'text-sm'}`}>-</span>
   }
   
   const dif = real - forecast
@@ -553,12 +529,14 @@ function DiferenciaCell({ forecast, real }: { forecast: number | null | undefine
   
   return (
     <div className="flex flex-col items-center">
-      <span className={`text-sm font-medium ${dif >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+      <span className={`${small ? 'text-xs' : 'text-sm'} font-medium ${dif >= 0 ? 'text-green-400' : 'text-red-400'}`}>
         {dif >= 0 ? '+' : ''}{dif.toLocaleString()}
       </span>
-      <span className={`text-xs ${dif >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
-        ({dif >= 0 ? '+' : ''}{pct}%)
-      </span>
+      {!small && (
+        <span className={`text-xs ${dif >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+          ({dif >= 0 ? '+' : ''}{pct}%)
+        </span>
+      )}
     </div>
   )
 }

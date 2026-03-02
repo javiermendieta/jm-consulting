@@ -187,6 +187,7 @@ model PLValor {
   id                  String    @id @default(uuid())
   cuentaId            String
   cuenta              CuentaPL  @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cashflowItemId      String?
   periodo             String
   tipoVista           String
   forecastMonto       Float?
@@ -197,7 +198,7 @@ model PLValor {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   
-  @@unique([cuentaId, periodo, tipoVista])
+  @@unique([cuentaId, periodo, tipoVista, cashflowItemId])
 }
 
 // ==================== CONFIGURACIÓN ====================
