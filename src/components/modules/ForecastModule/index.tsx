@@ -61,7 +61,7 @@ interface ForecastEntry {
 export function ForecastModule() {
   const { forecastFiltros, setForecastFiltros } = useStore()
   const [entries, setEntries] = useState<ForecastEntry[]>([])
-  const [restaurantes, setRestaurantes] = useState<Restaurante[]>([])
+  const [restaurantesList, setRestaurantesList] = useState<Restaurante[]>([])
   const [canales, setCanales] = useState<Canal[]>([])
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [tiposDia, setTiposDia] = useState<TipoDia[]>([])
@@ -116,7 +116,7 @@ export function ForecastModule() {
       }
 
       setEntries(entriesData)
-      setRestaurantes(restData)
+      setRestaurantesList(restData)
       setCanales(canalesData)
       setTurnos(turnosData)
       setTiposDia(tiposData)
@@ -352,8 +352,8 @@ export function ForecastModule() {
               </button>
 
               {/* Nivel 2: Restaurantes */}
-              {expandedDates.has(fechaKey) && Object.entries(restaurantes).map(([restId, entries]) => {
-                const restaurante = restaurantes.find(r => r.id === restId)
+              {expandedDates.has(fechaKey) && Object.entries(restaurantes).map(([restId, restEntries]) => {
+                const restauranteInfo = restaurantesList.find(r => r.id === restId)
                 const restKey = `${fechaKey}-${restId}`
                 
                 return (
@@ -368,7 +368,7 @@ export function ForecastModule() {
                         ) : (
                           <ChevronRight className="w-4 h-4 text-gray-400" />
                         )}
-                        <span className="text-gray-300">{restaurante?.nombre || 'Restaurante'}</span>
+                        <span className="text-gray-300">{restauranteInfo?.nombre || 'Restaurante'}</span>
                       </div>
                       <div className="col-span-9"></div>
                     </button>
