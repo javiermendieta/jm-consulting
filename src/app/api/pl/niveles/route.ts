@@ -5,12 +5,15 @@ import { db } from '@/lib/db'
 export async function GET() {
   try {
     const niveles = await db.nivelPL.findMany({
+      include: {
+        cuentas: true
+      },
       orderBy: { orden: 'asc' }
     })
     return NextResponse.json(niveles)
   } catch (error) {
     console.error('Error fetching niveles PL:', error)
-    return NextResponse.json({ error: 'Error al obtener niveles P&L' }, { status: 500 })
+    return NextResponse.json([])
   }
 }
 

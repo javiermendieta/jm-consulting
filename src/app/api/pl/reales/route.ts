@@ -5,19 +5,16 @@ import { db } from '@/lib/db'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const mes = parseInt(searchParams.get('mes') || `${new Date().getMonth() + 1}`)
-    const anio = parseInt(searchParams.get('anio') || `${new Date().getFullYear()}`)
+    const mes = parseInt(searchParams.get('mes') || '1')
+    const anio = parseInt(searchParams.get('anio') || new Date().getFullYear().toString())
 
-    // Obtener todas las cuentas P&L con sus items de cashflow
+    // Obtener todas las cuentas con sus items
     const cuentas = await db.cuentaPL.findMany({
       include: {
         cashflowItems: {
           include: {
             registros: {
-              where: {
-                mes: mes,
-                anio: anio
-              }
+              where: { mes, anio }
             }
           }
         }
@@ -25,18 +22,21 @@ export async function GET(request: NextRequest) {
     })
 
     // Calcular totales por cuenta
-    const valoresReales: Record<string, number> = {}
+    const result: Record<string, number> = {}
     
     for (const cuenta of cuentas) {
-      const total = cuenta.cashflowItems.reduce((sum, item) => {
-        return sum + item.registros.reduce((s, r) => s + (r.monto || 0), 0)
-      }, 0)
-      valoresReales[cuenta.id] = total
+      let total = 0
+      for (const item of cuenta.cashflowItems) {
+        for (const registro of item.registros) {
+          total += registro.monto || 0
+        }
+      }
+      result[cuenta.id] = total
     }
 
-    return NextResponse.json(valoresReales)
+    return NextResponse.json(result)
   } catch (error) {
-    console.error('Error fetching valores reales:', error)
-    return NextResponse.json({ error: 'Error al obtener valores reales' }, { status: 500 })
+    console.error('Error fetching reales:', error)
+    return NextResponse.json({})
   }
 }
