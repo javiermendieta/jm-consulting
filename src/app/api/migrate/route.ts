@@ -181,6 +181,44 @@ export async function POST() {
       tiposDia = await db.tipoDia.count()
     } catch {}
 
+    // 10. Crear tabla PLItemForecast para teóricos por item
+    try {
+      await db.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "PLItemForecast" (
+          "id" TEXT NOT NULL,
+          "itemId" TEXT NOT NULL,
+          "periodo" TEXT NOT NULL,
+          "forecastMonto" DOUBLE PRECISION NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "PLItemForecast_pkey" PRIMARY KEY ("id")
+        );
+      `)
+      results.push('Tabla PLItemForecast creada')
+    } catch (e: any) {
+      if (e.message?.includes('already exists')) {
+        results.push('Tabla PLItemForecast ya existe')
+      } else {
+        results.push(`Error PLItemForecast: ${e.message}`)
+      }
+    }
+
+    // 11. Agregar FK a CashflowItem
+    try {
+      await db.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PLItemForecast_itemId_fkey') THEN
+            ALTER TABLE "PLItemForecast" ADD CONSTRAINT "PLItemForecast_itemId_fkey" 
+            FOREIGN KEY ("itemId") REFERENCES "CashflowItem"(id) ON DELETE CASCADE ON UPDATE CASCADE;
+          END IF;
+        END $$;
+      `)
+      results.push('FK PLItemForecast creada')
+    } catch (e: any) {
+      results.push(`FK PLItemForecast: ${e.message?.substring(0, 50)}`)
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Migración completada',
