@@ -55,25 +55,19 @@ interface CuentaPLSimple {
   id: string
   nombre: string
   nivelId: string
-  padreId: string | null
   nivel?: {
     id: string
     nombre: string
     codigo: string
-  }
-  padre?: {
-    id: string
-    nombre: string
-    padreId: string | null
+    orden: number
   }
 }
 
-interface GrupoPL {
+interface NivelPL {
   id: string
+  codigo: string
   nombre: string
-  nivelId: string
-  tipo: 'ingreso' | 'egreso'
-  items: CashflowItem[]
+  orden: number
 }
 
 const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
@@ -83,7 +77,7 @@ type Vista = 'resumen' | 'item'
 export function CashflowModule() {
   const { cashflowAnio, setCashflowAnio } = useStore()
   const [categorias, setCategorias] = useState<CashflowCategoria[]>([])
-  const [cuentasPL, setCuentasPL] = useState<CuentaPLSimple[]>([])
+  const [nivelesPL, setNivelesPL] = useState<NivelPL[]>([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<Vista>('resumen')
   const [itemSeleccionado, setItemSeleccionado] = useState<CashflowItem | null>(null)
@@ -96,7 +90,9 @@ export function CashflowModule() {
   const [filtroTexto, setFiltroTexto] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'ingreso' | 'egreso'>('todos')
   const [showFiltros, setShowFiltros] = useState(false)
-  const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
+  
+  // Grupos expandidos (por nivelId)
+  const [expandedNiveles, setExpandedNiveles] = useState<Set<string>>(new Set())
   
   // Drag and Drop
   const [draggedItem, setDraggedItem] = useState<CashflowItem | null>(null)
@@ -131,38 +127,26 @@ export function CashflowModule() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [categoriasRes, cuentasRes] = await Promise.all([
+      const [categoriasRes, nivelesRes] = await Promise.all([
         fetch('/api/cashflow/categorias'),
-        fetch('/api/pl/cuentas')
+        fetch('/api/pl/niveles')
       ])
 
       const categoriasData = await categoriasRes.json()
-      const cuentasData = await cuentasRes.json()
+      const nivelesData = await nivelesRes.json()
 
       setCategorias(Array.isArray(categoriasData) ? categoriasData : [])
+      setNivelesPL(Array.isArray(nivelesData) ? nivelesData : [])
       
-      // Procesar cuentas P&L
-      const cuentasArray = Array.isArray(cuentasData) ? cuentasData : []
-      setCuentasPL(cuentasArray.map((c: any) => ({
-        id: c.id,
-        nombre: c.nombre,
-        nivelId: c.nivelId,
-        padreId: c.padreId,
-        nivel: c.nivel,
-        padre: c.padre
-      })))
-      
-      // Expandir todos los grupos por defecto
-      const gruposIds = new Set<string>()
-      cuentasArray.forEach((c: any) => {
-        if (c.padreId) gruposIds.add(c.padreId)
-      })
-      setExpandedGrupos(gruposIds)
+      // Expandir todos los niveles por defecto
+      if (Array.isArray(nivelesData)) {
+        setExpandedNiveles(new Set(nivelesData.map((n: NivelPL) => n.id)))
+      }
       
     } catch (error) {
       console.error('Error fetching cashflow data:', error)
       setCategorias([])
-      setCuentasPL([])
+      setNivelesPL([])
     } finally {
       setLoading(false)
     }
@@ -230,81 +214,37 @@ export function CashflowModule() {
     return `${value.toFixed(1)}%`
   }
 
-  // === AGRUPACIÓN POR CUENTA P&L ===
+  // === AGRUPACIÓN POR NIVEL P&L ===
 
-  const getGrupoPL = (item: CashflowItem): { id: string; nombre: string; tipo: 'ingreso' | 'egreso' } | null => {
-    if (!item.cuentaPL) return null
-    
-    // Si la cuenta tiene padre, usar el padre como grupo
-    if (item.cuentaPL.padreId) {
-      const padre = cuentasPL.find(c => c.id === item.cuentaPL!.padreId)
-      if (padre) {
-        return {
-          id: padre.id,
-          nombre: padre.nombre,
-          tipo: 'egreso'
-        }
-      }
-    }
-    
-    // Si no tiene padre, usar la cuenta misma
-    const nivel = item.cuentaPL.nivel
-    const esIngreso = nivel?.codigo === 'VB' || nivel?.nombre?.toLowerCase().includes('venta')
-    
-    return {
-      id: item.cuentaPL.id,
-      nombre: item.cuentaPL.nombre,
-      tipo: esIngreso ? 'ingreso' : 'egreso'
-    }
-  }
-
-  const getItemsAgrupados = (tipo: 'ingreso' | 'egreso'): GrupoPL[] => {
+  const getItemsPorNivel = (tipo: 'ingreso' | 'egreso'): Map<string, CashflowItem[]> => {
     const categoria = categorias.find(c => c.tipo === tipo)
-    if (!categoria) return []
+    if (!categoria) return new Map()
 
-    const grupos: Map<string, GrupoPL> = new Map()
-    const itemsSinGrupo: CashflowItem[] = []
-
+    const itemsPorNivel = new Map<string, CashflowItem[]>()
+    
     categoria.items.forEach(item => {
-      const grupo = getGrupoPL(item)
-      if (grupo) {
-        if (!grupos.has(grupo.id)) {
-          grupos.set(grupo.id, {
-            id: grupo.id,
-            nombre: grupo.nombre,
-            nivelId: '',
-            tipo: tipo,
-            items: []
-          })
-        }
-        grupos.get(grupo.id)!.items.push(item)
-      } else {
-        itemsSinGrupo.push(item)
+      const nivelId = item.cuentaPL?.nivelId || 'sin-nivel'
+      if (!itemsPorNivel.has(nivelId)) {
+        itemsPorNivel.set(nivelId, [])
       }
+      itemsPorNivel.get(nivelId)!.push(item)
     })
 
-    // Agregar items sin grupo a un grupo "Otros"
-    if (itemsSinGrupo.length > 0) {
-      grupos.set('sin-grupo-' + tipo, {
-        id: 'sin-grupo-' + tipo,
-        nombre: tipo === 'ingreso' ? 'Otros Ingresos' : 'Otros Gastos',
-        nivelId: '',
-        tipo: tipo,
-        items: itemsSinGrupo
-      })
-    }
-
-    return Array.from(grupos.values())
+    return itemsPorNivel
   }
 
-  const toggleGrupo = (grupoId: string) => {
-    const newSet = new Set(expandedGrupos)
-    if (newSet.has(grupoId)) {
-      newSet.delete(grupoId)
+  const getNivelInfo = (nivelId: string): NivelPL | undefined => {
+    return nivelesPL.find(n => n.id === nivelId)
+  }
+
+  const toggleNivel = (nivelId: string) => {
+    const newSet = new Set(expandedNiveles)
+    if (newSet.has(nivelId)) {
+      newSet.delete(nivelId)
     } else {
-      newSet.add(grupoId)
+      newSet.add(nivelId)
     }
-    setExpandedGrupos(newSet)
+    setExpandedNiveles(newSet)
   }
 
   // === FILTROS ===
@@ -549,9 +489,15 @@ export function CashflowModule() {
     return MESES.reduce((sum, _, i) => sum + getTotalMes(i + 1), 0)
   }
 
-  // Obtener cuentas P&L padre para el selector
-  const cuentasPadre = cuentasPL.filter(c => !c.padreId)
-  const cuentasHijas = cuentasPL.filter(c => c.padreId)
+  // Obtener todas las cuentas P&L para el selector
+  const [cuentasPL, setCuentasPL] = useState<any[]>([])
+  
+  useEffect(() => {
+    fetch('/api/pl/cuentas')
+      .then(r => r.json())
+      .then(data => setCuentasPL(Array.isArray(data) ? data : []))
+      .catch(() => setCuentasPL([]))
+  }, [])
 
   if (loading) {
     return (
@@ -583,7 +529,7 @@ export function CashflowModule() {
               {vista === 'resumen' ? 'Cash Flow' : itemSeleccionado?.nombre}
             </h2>
             <p className="text-gray-400">
-              {vista === 'resumen' ? 'Flujo de caja anual agrupado por P&L' : `Año ${anio}`}
+              {vista === 'resumen' ? 'Flujo de caja agrupado por categorías P&L' : `Año ${anio}`}
             </p>
           </div>
         </div>
@@ -720,7 +666,7 @@ export function CashflowModule() {
             </div>
           </div>
 
-          {/* Tabla RESUMEN con agrupación por P&L */}
+          {/* Tabla RESUMEN con agrupación por Nivel P&L */}
           <div className="bg-[#1a1a1a] rounded-xl border border-white/10 overflow-x-auto">
             <table className="w-full border-collapse min-w-[1400px]">
               <thead>
@@ -737,252 +683,281 @@ export function CashflowModule() {
               </thead>
               <tbody>
                 {/* INGRESOS */}
-                {(filtroTipo === 'todos' || filtroTipo === 'ingreso') && getItemsAgrupados('ingreso').map(grupo => (
-                  <Fragment key={grupo.id}>
-                    {/* Header Grupo P&L */}
-                    <tr className="bg-green-500/10 cursor-pointer" onClick={() => toggleGrupo(grupo.id)}>
-                      <td className="p-2 border-b border-white/10"></td>
-                      <td className="p-2 font-bold text-green-400 border-b border-white/10 flex items-center gap-2">
-                        {expandedGrupos.has(grupo.id) ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Folder className="w-4 h-4" />
-                        {grupo.nombre}
-                        <span className="text-xs text-gray-500 ml-2">
-                          ({grupo.items.length} items)
-                        </span>
-                      </td>
-                      <td className="p-2 text-center text-green-400 text-sm font-bold border-b border-white/10">
-                        {formatPercent(grupo.items.reduce((sum, i) => sum + getPorcentajeSobreIngresos(i), 0))}
-                      </td>
-                      {MESES.map((_, i) => (
-                        <td key={i} className="p-2 text-center text-green-400 text-sm font-medium border-b border-white/10">
-                          {formatCurrency(grupo.items.reduce((s, item) => s + getTotalItemMes(item, i + 1), 0))}
-                        </td>
-                      ))}
-                      <td className="p-2 text-center text-green-400 font-bold border-b border-white/10">
-                        {formatCurrency(grupo.items.reduce((s, i) => s + getTotalItemAnual(i), 0))}
-                      </td>
-                      <td className="p-2 border-b border-white/10"></td>
-                    </tr>
-                    
-                    {/* Items del grupo */}
-                    {expandedGrupos.has(grupo.id) && filtrarItems(grupo.items).map((item) => (
-                      <tr 
-                        key={item.id} 
-                        className={`border-b border-white/5 group ${
-                          draggedItem?.id === item.id ? 'opacity-50 bg-blue-500/10' : ''
-                        } ${
-                          dragOverItem === item.id ? 'bg-blue-500/20' : ''
-                        }`}
-                      >
-                        <td 
-                          className="p-2 text-center cursor-grab active:cursor-grabbing"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, item)}
-                          onDragEnd={handleDragEnd}
-                        >
-                          <div className={`flex justify-center ${draggedItem?.id === item.id ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'}`}>
-                            <GripVertical className="w-4 h-4" />
-                          </div>
-                        </td>
-                        <td 
-                          className="p-2 pl-8 cursor-pointer" 
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                          onDragOver={(e) => handleDragOver(e, item.id)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, item)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-white text-sm">{item.nombre}</span>
-                            {item.cuentaPL && (
-                              <span className="text-xs text-green-400/60 flex items-center gap-1">
-                                <Link className="w-3 h-3" />
-                                {item.cuentaPL.nombre}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td 
-                          className="p-2 text-center text-sm text-gray-400 cursor-pointer"
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                        >
-                          {formatPercent(getPorcentajeSobreIngresos(item))}
-                        </td>
-                        {MESES.map((_, i) => (
-                          <td 
-                            key={i} 
-                            className="p-2 text-center text-sm text-white cursor-pointer" 
-                            onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                            onDragOver={(e) => handleDragOver(e, item.id)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, item)}
+                {(filtroTipo === 'todos' || filtroTipo === 'ingreso') && (() => {
+                  const itemsPorNivel = getItemsPorNivel('ingreso')
+                  return nivelesPL
+                    .filter(nivel => itemsPorNivel.has(nivel.id))
+                    .map(nivel => {
+                      const items = filtrarItems(itemsPorNivel.get(nivel.id) || [])
+                      if (items.length === 0) return null
+                      const isExpanded = expandedNiveles.has(nivel.id)
+                      const totalNivel = items.reduce((s, i) => s + getTotalItemAnual(i), 0)
+                      const pctNivel = (totalNivel / getTotalIngresosAnual()) * 100
+                      
+                      return (
+                        <Fragment key={nivel.id}>
+                          {/* Header del Nivel P&L */}
+                          <tr 
+                            className="bg-green-500/10 cursor-pointer hover:bg-green-500/20" 
+                            onClick={() => toggleNivel(nivel.id)}
                           >
-                            {formatCurrency(getTotalItemMes(item, i + 1))}
-                          </td>
-                        ))}
-                        <td 
-                          className="p-2 text-center text-sm font-bold text-white cursor-pointer" 
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                        >
-                          {formatCurrency(getTotalItemAnual(item))}
-                        </td>
-                        <td className="p-2">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={(e) => { 
-                                e.stopPropagation()
-                                setEditingItem(item)
-                                setShowEditItemModal(true)
-                              }}
-                              className="p-1.5 hover:bg-white/10 rounded text-blue-400 hover:text-blue-300"
-                              title="Editar item"
+                            <td className="p-2 border-b border-white/10"></td>
+                            <td className="p-2 font-bold text-green-400 border-b border-white/10">
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                                <Folder className="w-4 h-4" />
+                                <span>{nivel.nombre}</span>
+                                <span className="text-xs text-gray-500">
+                                  ({items.length} items)
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2 text-center text-green-400 text-sm font-bold border-b border-white/10">
+                              {formatPercent(pctNivel)}
+                            </td>
+                            {MESES.map((_, i) => (
+                              <td key={i} className="p-2 text-center text-green-400 text-sm font-medium border-b border-white/10">
+                                {formatCurrency(items.reduce((s, item) => s + getTotalItemMes(item, i + 1), 0))}
+                              </td>
+                            ))}
+                            <td className="p-2 text-center text-green-400 font-bold border-b border-white/10">
+                              {formatCurrency(totalNivel)}
+                            </td>
+                            <td className="p-2 border-b border-white/10"></td>
+                          </tr>
+                          
+                          {/* Items del nivel */}
+                          {isExpanded && items.map((item) => (
+                            <tr 
+                              key={item.id} 
+                              className={`border-b border-white/5 group ${
+                                draggedItem?.id === item.id ? 'opacity-50 bg-blue-500/10' : ''
+                              } ${
+                                dragOverItem === item.id ? 'bg-blue-500/20' : ''
+                              }`}
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
-                              className="p-1.5 hover:bg-white/10 rounded text-red-400 hover:text-red-300"
-                              title="Eliminar item"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
+                              <td 
+                                className="p-2 text-center cursor-grab active:cursor-grabbing"
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, item)}
+                                onDragEnd={handleDragEnd}
+                              >
+                                <div className={`flex justify-center ${draggedItem?.id === item.id ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'}`}>
+                                  <GripVertical className="w-4 h-4" />
+                                </div>
+                              </td>
+                              <td 
+                                className="p-2 pl-8 cursor-pointer" 
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                                onDragOver={(e) => handleDragOver(e, item.id)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, item)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white text-sm">{item.nombre}</span>
+                                  {item.cuentaPL && (
+                                    <span className="text-xs text-green-400/60 flex items-center gap-1">
+                                      <Link className="w-3 h-3" />
+                                      {item.cuentaPL.nombre}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td 
+                                className="p-2 text-center text-sm text-gray-400 cursor-pointer"
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                              >
+                                {formatPercent(getPorcentajeSobreIngresos(item))}
+                              </td>
+                              {MESES.map((_, i) => (
+                                <td 
+                                  key={i} 
+                                  className="p-2 text-center text-sm text-white cursor-pointer" 
+                                  onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                                  onDragOver={(e) => handleDragOver(e, item.id)}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={(e) => handleDrop(e, item)}
+                                >
+                                  {formatCurrency(getTotalItemMes(item, i + 1))}
+                                </td>
+                              ))}
+                              <td 
+                                className="p-2 text-center text-sm font-bold text-white cursor-pointer" 
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                              >
+                                {formatCurrency(getTotalItemAnual(item))}
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={(e) => { 
+                                      e.stopPropagation()
+                                      setEditingItem(item)
+                                      setShowEditItemModal(true)
+                                    }}
+                                    className="p-1.5 hover:bg-white/10 rounded text-blue-400 hover:text-blue-300"
+                                    title="Editar item"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
+                                    className="p-1.5 hover:bg-white/10 rounded text-red-400 hover:text-red-300"
+                                    title="Eliminar item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })
+                })()}
 
                 {/* EGRESOS */}
-                {(filtroTipo === 'todos' || filtroTipo === 'egreso') && getItemsAgrupados('egreso').map(grupo => (
-                  <Fragment key={grupo.id}>
-                    {/* Header Grupo P&L */}
-                    <tr className="bg-red-500/10 cursor-pointer" onClick={() => toggleGrupo(grupo.id)}>
-                      <td className="p-2 border-b border-white/10"></td>
-                      <td className="p-2 font-bold text-red-400 border-b border-white/10 flex items-center gap-2">
-                        {expandedGrupos.has(grupo.id) ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Folder className="w-4 h-4" />
-                        {grupo.nombre}
-                        <span className="text-xs text-gray-500 ml-2">
-                          ({grupo.items.length} items)
-                        </span>
-                      </td>
-                      <td className="p-2 text-center text-red-400 text-sm font-bold border-b border-white/10">
-                        {formatPercent(grupo.items.reduce((sum, i) => sum + getPorcentajeSobreIngresos(i), 0))}
-                      </td>
-                      {MESES.map((_, i) => (
-                        <td key={i} className="p-2 text-center text-red-400 text-sm font-medium border-b border-white/10">
-                          {formatCurrency(grupo.items.reduce((s, item) => s + getTotalItemMes(item, i + 1), 0))}
-                        </td>
-                      ))}
-                      <td className="p-2 text-center text-red-400 font-bold border-b border-white/10">
-                        {formatCurrency(grupo.items.reduce((s, i) => s + getTotalItemAnual(i), 0))}
-                      </td>
-                      <td className="p-2 border-b border-white/10"></td>
-                    </tr>
-                    
-                    {/* Items del grupo */}
-                    {expandedGrupos.has(grupo.id) && filtrarItems(grupo.items).map((item) => (
-                      <tr 
-                        key={item.id} 
-                        className={`border-b border-white/5 group ${
-                          draggedItem?.id === item.id ? 'opacity-50 bg-blue-500/10' : ''
-                        } ${
-                          dragOverItem === item.id ? 'bg-blue-500/20' : ''
-                        }`}
-                      >
-                        <td 
-                          className="p-2 text-center cursor-grab active:cursor-grabbing"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, item)}
-                          onDragEnd={handleDragEnd}
-                        >
-                          <div className={`flex justify-center ${draggedItem?.id === item.id ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'}`}>
-                            <GripVertical className="w-4 h-4" />
-                          </div>
-                        </td>
-                        <td 
-                          className="p-2 pl-8 cursor-pointer" 
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                          onDragOver={(e) => handleDragOver(e, item.id)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, item)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-white text-sm">{item.nombre}</span>
-                            {item.cuentaPL && (
-                              <span className="text-xs text-red-400/60 flex items-center gap-1">
-                                <Link className="w-3 h-3" />
-                                {item.cuentaPL.nombre}
-                              </span>
-                            )}
-                            {!item.cuentaPL && (
-                              <span className="text-xs text-yellow-500 flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" />
-                                Sin asociar
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td 
-                          className="p-2 text-center text-sm text-gray-400 cursor-pointer"
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                        >
-                          <span className={getPorcentajeSobreIngresos(item) > 10 ? 'text-red-400 font-medium' : ''}>
-                            {formatPercent(getPorcentajeSobreIngresos(item))}
-                          </span>
-                        </td>
-                        {MESES.map((_, i) => (
-                          <td 
-                            key={i} 
-                            className="p-2 text-center text-sm text-white cursor-pointer" 
-                            onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                            onDragOver={(e) => handleDragOver(e, item.id)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, item)}
+                {(filtroTipo === 'todos' || filtroTipo === 'egreso') && (() => {
+                  const itemsPorNivel = getItemsPorNivel('egreso')
+                  return nivelesPL
+                    .filter(nivel => itemsPorNivel.has(nivel.id) && nivel.codigo !== 'PF') // Excluir PROFIT
+                    .map(nivel => {
+                      const items = filtrarItems(itemsPorNivel.get(nivel.id) || [])
+                      if (items.length === 0) return null
+                      const isExpanded = expandedNiveles.has(nivel.id)
+                      const totalNivel = items.reduce((s, i) => s + getTotalItemAnual(i), 0)
+                      
+                      return (
+                        <Fragment key={nivel.id}>
+                          {/* Header del Nivel P&L */}
+                          <tr 
+                            className="bg-red-500/10 cursor-pointer hover:bg-red-500/20" 
+                            onClick={() => toggleNivel(nivel.id)}
                           >
-                            {formatCurrency(getTotalItemMes(item, i + 1))}
-                          </td>
-                        ))}
-                        <td 
-                          className="p-2 text-center text-sm font-bold text-white cursor-pointer" 
-                          onClick={() => { setVista('item'); setItemSeleccionado(item); }}
-                        >
-                          {formatCurrency(getTotalItemAnual(item))}
-                        </td>
-                        <td className="p-2">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={(e) => { 
-                                e.stopPropagation()
-                                setEditingItem(item)
-                                setShowEditItemModal(true)
-                              }}
-                              className="p-1.5 hover:bg-white/10 rounded text-blue-400 hover:text-blue-300"
-                              title="Editar item"
+                            <td className="p-2 border-b border-white/10"></td>
+                            <td className="p-2 font-bold text-red-400 border-b border-white/10">
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                                <Folder className="w-4 h-4" />
+                                <span>{nivel.nombre}</span>
+                                <span className="text-xs text-gray-500">
+                                  ({items.length} items)
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2 text-center text-red-400 text-sm font-bold border-b border-white/10">
+                              {formatPercent((totalNivel / getTotalIngresosAnual()) * 100)}
+                            </td>
+                            {MESES.map((_, i) => (
+                              <td key={i} className="p-2 text-center text-red-400 text-sm font-medium border-b border-white/10">
+                                {formatCurrency(items.reduce((s, item) => s + getTotalItemMes(item, i + 1), 0))}
+                              </td>
+                            ))}
+                            <td className="p-2 text-center text-red-400 font-bold border-b border-white/10">
+                              {formatCurrency(totalNivel)}
+                            </td>
+                            <td className="p-2 border-b border-white/10"></td>
+                          </tr>
+                          
+                          {/* Items del nivel */}
+                          {isExpanded && items.map((item) => (
+                            <tr 
+                              key={item.id} 
+                              className={`border-b border-white/5 group ${
+                                draggedItem?.id === item.id ? 'opacity-50 bg-blue-500/10' : ''
+                              } ${
+                                dragOverItem === item.id ? 'bg-blue-500/20' : ''
+                              }`}
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
-                              className="p-1.5 hover:bg-white/10 rounded text-red-400 hover:text-red-300"
-                              title="Eliminar item"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
+                              <td 
+                                className="p-2 text-center cursor-grab active:cursor-grabbing"
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, item)}
+                                onDragEnd={handleDragEnd}
+                              >
+                                <div className={`flex justify-center ${draggedItem?.id === item.id ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'}`}>
+                                  <GripVertical className="w-4 h-4" />
+                                </div>
+                              </td>
+                              <td 
+                                className="p-2 pl-8 cursor-pointer" 
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                                onDragOver={(e) => handleDragOver(e, item.id)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, item)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white text-sm">{item.nombre}</span>
+                                  {item.cuentaPL && (
+                                    <span className="text-xs text-red-400/60 flex items-center gap-1">
+                                      <Link className="w-3 h-3" />
+                                      {item.cuentaPL.nombre}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td 
+                                className="p-2 text-center text-sm cursor-pointer"
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                              >
+                                <span className={getPorcentajeSobreIngresos(item) > 10 ? 'text-red-400 font-medium' : 'text-gray-400'}>
+                                  {formatPercent(getPorcentajeSobreIngresos(item))}
+                                </span>
+                              </td>
+                              {MESES.map((_, i) => (
+                                <td 
+                                  key={i} 
+                                  className="p-2 text-center text-sm text-white cursor-pointer" 
+                                  onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                                  onDragOver={(e) => handleDragOver(e, item.id)}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={(e) => handleDrop(e, item)}
+                                >
+                                  {formatCurrency(getTotalItemMes(item, i + 1))}
+                                </td>
+                              ))}
+                              <td 
+                                className="p-2 text-center text-sm font-bold text-white cursor-pointer" 
+                                onClick={() => { setVista('item'); setItemSeleccionado(item); }}
+                              >
+                                {formatCurrency(getTotalItemAnual(item))}
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={(e) => { 
+                                      e.stopPropagation()
+                                      setEditingItem(item)
+                                      setShowEditItemModal(true)
+                                    }}
+                                    className="p-1.5 hover:bg-white/10 rounded text-blue-400 hover:text-blue-300"
+                                    title="Editar item"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
+                                    className="p-1.5 hover:bg-white/10 rounded text-red-400 hover:text-red-300"
+                                    title="Eliminar item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })
+                })()}
 
                 {/* Fila de SALDO */}
                 <tr className="bg-blue-500/10 font-bold">
@@ -1168,7 +1143,7 @@ export function CashflowModule() {
               
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  Asociar a Cuenta P&L <span className="text-red-400">*</span>
+                  Categoría P&L <span className="text-red-400">*</span>
                 </label>
                 
                 <select
@@ -1176,22 +1151,19 @@ export function CashflowModule() {
                   onChange={(e) => setNewItemData(prev => ({ ...prev, cuentaPLId: e.target.value }))}
                   className="w-full px-3 py-2 bg-[#2d2d2d] border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 >
-                  <option value="">Seleccionar cuenta P&L...</option>
+                  <option value="">Seleccionar categoría P&L...</option>
                   
-                  {/* Agrupar por cuentas padre */}
-                  {cuentasPadre.map(padre => {
-                    const hijas = cuentasHijas.filter(c => c.padreId === padre.id)
+                  {/* Agrupar por nivel P&L */}
+                  {nivelesPL.map(nivel => {
+                    const cuentasDelNivel = cuentasPL.filter((c: any) => c.nivelId === nivel.id)
+                    if (cuentasDelNivel.length === 0) return null
                     return (
-                      <optgroup key={padre.id} label={`📁 ${padre.nombre}`}>
-                        {hijas.length > 0 ? hijas.map(cuenta => (
+                      <optgroup key={nivel.id} label={`${nivel.nombre}`}>
+                        {cuentasDelNivel.map((cuenta: any) => (
                           <option key={cuenta.id} value={cuenta.id}>
                             {cuenta.nombre}
                           </option>
-                        )) : (
-                          <option key={padre.id} value={padre.id}>
-                            {padre.nombre}
-                          </option>
-                        )}
+                        ))}
                       </optgroup>
                     )
                   })}
@@ -1236,7 +1208,7 @@ export function CashflowModule() {
               
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  Asociar a Cuenta P&L <span className="text-red-400">*</span>
+                  Categoría P&L <span className="text-red-400">*</span>
                 </label>
                 
                 <select
@@ -1244,21 +1216,18 @@ export function CashflowModule() {
                   onChange={(e) => setEditingItem(prev => prev ? { ...prev, cuentaPLId: e.target.value } : null)}
                   className="w-full px-3 py-2 bg-[#2d2d2d] border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 >
-                  <option value="">Seleccionar cuenta P&L...</option>
+                  <option value="">Seleccionar categoría P&L...</option>
                   
-                  {cuentasPadre.map(padre => {
-                    const hijas = cuentasHijas.filter(c => c.padreId === padre.id)
+                  {nivelesPL.map(nivel => {
+                    const cuentasDelNivel = cuentasPL.filter((c: any) => c.nivelId === nivel.id)
+                    if (cuentasDelNivel.length === 0) return null
                     return (
-                      <optgroup key={padre.id} label={`📁 ${padre.nombre}`}>
-                        {hijas.length > 0 ? hijas.map(cuenta => (
+                      <optgroup key={nivel.id} label={`${nivel.nombre}`}>
+                        {cuentasDelNivel.map((cuenta: any) => (
                           <option key={cuenta.id} value={cuenta.id}>
                             {cuenta.nombre}
                           </option>
-                        )) : (
-                          <option key={padre.id} value={padre.id}>
-                            {padre.nombre}
-                          </option>
-                        )}
+                        ))}
                       </optgroup>
                     )
                   })}
