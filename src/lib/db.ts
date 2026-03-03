@@ -4,12 +4,8 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// Fix for Supabase PgBouncer - add pgbouncer=true to disable prepared statements
-let databaseUrl = process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL || ''
-if (databaseUrl && !databaseUrl.includes('pgbouncer=')) {
-  const separator = databaseUrl.includes('?') ? '&' : '?'
-  databaseUrl = `${databaseUrl}${separator}pgbouncer=true`
-}
+// Usar DATABASE_URL (puerto 6543 con pgbouncer) para conexiones desde Vercel
+const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_DATABASE_URL || ''
 
 export const db =
   globalForPrisma.prisma ??
