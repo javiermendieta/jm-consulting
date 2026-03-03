@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// POST - Inicializar estructura P&L
-export async function POST() {
+// POST - Inicializar o resetear estructura P&L
+export async function POST(request: Request) {
   try {
-    // Verificar si ya existe
-    const existingNiveles = await db.nivelPL.findMany()
-    
-    if (existingNiveles.length > 0) {
-      return NextResponse.json({ message: 'Estructura ya existe', niveles: existingNiveles.length })
+    const url = new URL(request.url)
+    const reset = url.searchParams.get('reset') === 'true'
+
+    // Si reset=true, eliminar niveles existentes
+    if (reset) {
+      // Eliminar cuentas primero (cascade)
+      await db.cuentaPL.deleteMany()
+      await db.nivelPL.deleteMany()
+    } else {
+      // Verificar si ya existe
+      const existingNiveles = await db.nivelPL.findMany()
+      if (existingNiveles.length > 0) {
+        return NextResponse.json({ message: 'Estructura ya existe', niveles: existingNiveles.length })
+      }
     }
 
     // Estructura P&L:
@@ -34,7 +43,11 @@ export async function POST() {
       await db.nivelPL.create({ data: nivel })
     }
 
-    return NextResponse.json({ success: true, message: 'Estructura P&L creada', niveles: niveles.length })
+    return NextResponse.json({ 
+      success: true, 
+      message: reset ? 'Estructura P&L reseteada' : 'Estructura P&L creada', 
+      niveles: niveles.length 
+    })
   } catch (error) {
     console.error('Error initializing P&L:', error)
     return NextResponse.json({ error: 'Error al inicializar P&L' }, { status: 500 })
