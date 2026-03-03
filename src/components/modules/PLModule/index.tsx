@@ -13,7 +13,9 @@ import {
   Link,
   Calculator,
   Percent,
-  ArrowDown
+  ArrowDown,
+  Save,
+  X
 } from 'lucide-react'
 
 interface NivelPL {
@@ -59,7 +61,9 @@ export function PLModule() {
   const [cuentas, setCuentas] = useState<CuentaPL[]>([])
   const [valoresReales, setValoresReales] = useState<Record<string, number>>({})
   const [forecastsItems, setForecastsItems] = useState<Record<string, number>>({})
+  const [forecastsOriginal, setForecastsOriginal] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [expandedCuentas, setExpandedCuentas] = useState<Set<string>>(new Set())
 
   const getMesAnio = () => {
@@ -70,6 +74,9 @@ export function PLModule() {
     const now = new Date()
     return { mes: now.getMonth() + 1, anio: now.getFullYear() }
   }
+
+  // Detectar cambios
+  const hasChanges = JSON.stringify(forecastsItems) !== JSON.stringify(forecastsOriginal)
 
   useEffect(() => {
     fetchData()
@@ -106,7 +113,9 @@ export function PLModule() {
       setNiveles(Array.isArray(nivelesData) ? nivelesData : [])
       setCuentas(Array.isArray(cuentasData) ? cuentasData : [])
       setValoresReales(realesData && typeof realesData === 'object' && !realesData.error ? realesData : {})
-      setForecastsItems(forecastsData && typeof forecastsData === 'object' ? forecastsData : {})
+      const forecasts = forecastsData && typeof forecastsData === 'object' ? forecastsData : {}
+      setForecastsItems(forecasts)
+      setForecastsOriginal(forecasts)
     } catch (error) {
       console.error('Error fetching P&L data:', error)
     } finally {
@@ -114,21 +123,49 @@ export function PLModule() {
     }
   }
 
-  // Guardar forecast de un item
-  const saveItemForecast = async (itemId: string, value: number) => {
+  // Guardar TODOS los forecasts modificados
+  const saveAllForecasts = async () => {
+    setSaving(true)
     try {
-      await fetch('/api/pl/item-forecast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          itemId,
-          periodo: plFiltros.periodo,
-          forecastMonto: value
+      // Encontrar items modificados
+      const modifiedItems = Object.keys(forecastsItems).filter(
+        key => forecastsItems[key] !== forecastsOriginal[key]
+      )
+
+      // Guardar cada uno
+      for (const itemId of modifiedItems) {
+        await fetch('/api/pl/item-forecast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itemId,
+            periodo: plFiltros.periodo,
+            forecastMonto: forecastsItems[itemId]
+          })
         })
-      })
+      }
+
+      // Actualizar original
+      setForecastsOriginal({ ...forecastsItems })
     } catch (error) {
-      console.error('Error saving forecast:', error)
+      console.error('Error saving forecasts:', error)
+      alert('Error al guardar los cambios')
+    } finally {
+      setSaving(false)
     }
+  }
+
+  // Descartar cambios
+  const discardChanges = () => {
+    setForecastsItems({ ...forecastsOriginal })
+  }
+
+  // Actualizar valor local (sin guardar)
+  const updateForecastLocal = (itemId: string, value: number) => {
+    setForecastsItems(prev => ({
+      ...prev,
+      [itemId]: value || 0
+    }))
   }
 
   const toggleCuenta = (id: string) => {
@@ -268,7 +305,10 @@ export function PLModule() {
         <div className="flex items-center gap-3">
           <select
             value={plFiltros.periodo}
-            onChange={(e) => setPLFiltros({ periodo: e.target.value })}
+            onChange={(e) => {
+              if (hasChanges && !confirm('Hay cambios sin guardar. ¿Descartar y cambiar de período?')) return
+              setPLFiltros({ periodo: e.target.value })
+            }}
             className="px-3 py-2 bg-[#2d2d2d] border border-white/10 rounded-lg text-white text-sm"
           >
             {Array.from({ length: 12 }, (_, i) => {
@@ -279,11 +319,40 @@ export function PLModule() {
               return <option key={value} value={value}>{label}</option>
             })}
           </select>
+          
+          {hasChanges && (
+            <>
+              <button
+                onClick={discardChanges}
+                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <X className="w-4 h-4" />
+                Descartar
+              </button>
+              <button
+                onClick={saveAllForecasts}
+                disabled={saving}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </>
+          )}
+          
           <button onClick={fetchData} className="p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg text-gray-400">
             <RefreshCw className="w-5 h-5" />
           </button>
         </div>
       </div>
+
+      {/* Indicador de cambios */}
+      {hasChanges && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex items-center gap-2">
+          <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+          <span className="text-yellow-400 text-sm">Tiene cambios sin guardar</span>
+        </div>
+      )}
 
       {/* Info */}
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-3">
@@ -479,12 +548,14 @@ export function PLModule() {
                           {cuenta.cashflowItems.map((item) => {
                             const teoricoItem = forecastsItems[item.id] || 0
                             const realItem = getRealItem(item)
+                            const hasChanged = forecastsItems[item.id] !== forecastsOriginal[item.id]
                             
                             return (
-                              <div key={item.id} className="grid grid-cols-14 gap-1 p-2 pl-12 items-center border-l-2 border-blue-500/30 hover:bg-white/5">
+                              <div key={item.id} className={`grid grid-cols-14 gap-1 p-2 pl-12 items-center border-l-2 border-blue-500/30 hover:bg-white/5 ${hasChanged ? 'bg-yellow-500/5' : ''}`}>
                                 <div className="col-span-4 flex items-center gap-2">
                                   <Link className="w-3 h-3 text-blue-400" />
                                   <span className="text-gray-300 text-sm">{item.nombre}</span>
+                                  {hasChanged && <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></span>}
                                 </div>
                                 
                                 {/* Teórico del item - EDITABLE */}
@@ -492,13 +563,10 @@ export function PLModule() {
                                   <input
                                     type="number"
                                     value={teoricoItem || ''}
-                                    onChange={(e) => {
-                                      const newForecasts = { ...forecastsItems }
-                                      newForecasts[item.id] = Number(e.target.value) || 0
-                                      setForecastsItems(newForecasts)
-                                    }}
-                                    onBlur={(e) => saveItemForecast(item.id, Number(e.target.value) || 0)}
-                                    className="w-20 px-2 py-1 bg-[#1a1a1a] border border-blue-500/50 rounded text-white text-sm text-center focus:border-blue-500 focus:outline-none"
+                                    onChange={(e) => updateForecastLocal(item.id, Number(e.target.value) || 0)}
+                                    className={`w-20 px-2 py-1 bg-[#1a1a1a] border rounded text-white text-sm text-center focus:outline-none ${
+                                      hasChanged ? 'border-yellow-500' : 'border-blue-500/50 focus:border-blue-500'
+                                    }`}
                                     placeholder="0"
                                     onClick={(e) => e.stopPropagation()}
                                   />
