@@ -7,10 +7,30 @@ export async function POST(request: Request) {
     const url = new URL(request.url)
     const reset = url.searchParams.get('reset') === 'true'
 
-    // Si reset=true, eliminar niveles existentes
+    // Si reset=true, eliminar niveles existentes en orden correcto
     if (reset) {
-      // Eliminar cuentas primero (cascade)
+      // 1. Eliminar PLValor primero
+      await db.pLValor.deleteMany()
+      
+      // 2. Quitar referencias de CashflowItem a CuentaPL
+      await db.cashflowItem.updateMany({
+        data: { cuentaPLId: null }
+      })
+      
+      // 3. Eliminar cuentas (incluyendo subcuentas en orden)
+      const cuentas = await db.cuentaPL.findMany({
+        where: { padreId: null }
+      })
+      
+      // Eliminar subcuentas primero
+      await db.cuentaPL.deleteMany({
+        where: { padreId: { not: null } }
+      })
+      
+      // Luego eliminar cuentas principales
       await db.cuentaPL.deleteMany()
+      
+      // 4. Finalmente eliminar niveles
       await db.nivelPL.deleteMany()
     } else {
       // Verificar si ya existe
@@ -50,6 +70,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('Error initializing P&L:', error)
-    return NextResponse.json({ error: 'Error al inicializar P&L' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al inicializar P&L', details: String(error) }, { status: 500 })
   }
 }
