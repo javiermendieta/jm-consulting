@@ -11,14 +11,23 @@ export async function POST() {
       return NextResponse.json({ message: 'Estructura ya existe', niveles: existingNiveles.length })
     }
 
-    // Crear niveles P&L
+    // Estructura P&L:
+    // VB = Venta Bruta (se carga)
+    // CV = Costo de Venta (se carga)  
+    // VN = Venta Neta (CALCULADO: VB - CV)
+    // CMV = Costo de Mercadería Vendida (se carga)
+    // CM = Contribución Marginal (CALCULADO: VN - CMV)
+    // GO = Gastos Operativos (se cargan)
+    // PF = Profit (CALCULADO: CM - GO)
+    
     const niveles = [
       { codigo: 'VB', nombre: 'VENTA BRUTA', orden: 1 },
       { codigo: 'CV', nombre: 'COSTO DE VENTA', orden: 2 },
-      { codigo: 'CM', nombre: 'CMV', orden: 3 },
-      { codigo: 'VN', nombre: 'VENTA NETA', orden: 4 },
-      { codigo: 'GO', nombre: 'GASTOS OPERATIVOS', orden: 5 },
-      { codigo: 'PF', nombre: 'PROFIT', orden: 6 }
+      { codigo: 'VN', nombre: 'VENTA NETA', orden: 3 },
+      { codigo: 'CMV', nombre: 'CMV', orden: 4 },
+      { codigo: 'CM', nombre: 'CONTRIBUCIÓN MARGINAL', orden: 5 },
+      { codigo: 'GO', nombre: 'GASTOS OPERATIVOS', orden: 6 },
+      { codigo: 'PF', nombre: 'PROFIT', orden: 7 }
     ]
 
     for (const nivel of niveles) {

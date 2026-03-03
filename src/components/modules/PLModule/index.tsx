@@ -12,7 +12,8 @@ import {
   Info,
   Link,
   Calculator,
-  Percent
+  Percent,
+  ArrowDown
 } from 'lucide-react'
 
 interface NivelPL {
@@ -46,6 +47,11 @@ interface CashflowEntry {
   anio: number
   monto: number
 }
+
+// Niveles que se cargan manualmente
+const NIVELES_MANUALES = ['VB', 'CV', 'CMV', 'GO']
+// Niveles que se calculan automáticamente
+const NIVELES_CALCULADOS = ['VN', 'CM', 'PF']
 
 export function PLModule() {
   const { plFiltros, setPLFiltros } = useStore()
@@ -162,19 +168,73 @@ export function PLModule() {
       .reduce((sum, r) => sum + (r.monto || 0), 0) || 0
   }
 
-  // Calcular total de ventas para porcentajes
-  const getTotalVentas = (tipo: 'teórico' | 'real'): number => {
-    const vbNivel = niveles.find(n => n.codigo === 'VB')
-    if (!vbNivel) return 0
-    
-    const cuentaVB = cuentas.find(c => c.nivelId === vbNivel.id)
-    if (!cuentaVB) return 0
-    
-    return tipo === 'teórico' ? getTeoricoCuenta(cuentaVB) : getRealCuenta(cuentaVB.id)
+  // Obtener total de un nivel por código (teórico)
+  const getTotalNivelByCodigo = (codigo: string): number => {
+    const nivel = niveles.find(n => n.codigo === codigo)
+    if (!nivel) return 0
+    const cuentasNivel = cuentas.filter(c => c.nivelId === nivel.id)
+    return cuentasNivel.reduce((sum, cuenta) => sum + getTeoricoCuenta(cuenta), 0)
   }
 
-  // Calcular total por nivel
+  // Obtener total de un nivel por código (real)
+  const getTotalNivelRealByCodigo = (codigo: string): number => {
+    const nivel = niveles.find(n => n.codigo === codigo)
+    if (!nivel) return 0
+    const cuentasNivel = cuentas.filter(c => c.nivelId === nivel.id)
+    return cuentasNivel.reduce((sum, cuenta) => sum + getRealCuenta(cuenta.id), 0)
+  }
+
+  // Calcular valores automáticos TEÓRICOS
+  const getCalculadoTeorico = (codigo: string): number => {
+    const vb = getTotalNivelByCodigo('VB')
+    const cv = getTotalNivelByCodigo('CV')
+    const cmv = getTotalNivelByCodigo('CMV')
+    const go = getTotalNivelByCodigo('GO')
+
+    switch (codigo) {
+      case 'VN':
+        return vb - cv  // Venta Neta = Venta Bruta - Costo de Venta
+      case 'CM':
+        return (vb - cv) - cmv  // Contribución Marginal = Venta Neta - CMV
+      case 'PF':
+        return ((vb - cv) - cmv) - go  // Profit = CM - Gastos Operativos
+      default:
+        return 0
+    }
+  }
+
+  // Calcular valores automáticos REALES
+  const getCalculadoReal = (codigo: string): number => {
+    const vb = getTotalNivelRealByCodigo('VB')
+    const cv = getTotalNivelRealByCodigo('CV')
+    const cmv = getTotalNivelRealByCodigo('CMV')
+    const go = getTotalNivelRealByCodigo('GO')
+
+    switch (codigo) {
+      case 'VN':
+        return vb - cv  // Venta Neta = Venta Bruta - Costo de Venta
+      case 'CM':
+        return (vb - cv) - cmv  // Contribución Marginal = Venta Neta - CMV
+      case 'PF':
+        return ((vb - cv) - cmv) - go  // Profit = CM - Gastos Operativos
+      default:
+        return 0
+    }
+  }
+
+  // Total de ventas para porcentajes
+  const totalVentasTeorico = getTotalNivelByCodigo('VB')
+  const totalVentasReal = getTotalNivelRealByCodigo('VB')
+
+  // Total por nivel (considerando si es calculado o manual)
   const getTotalNivel = (nivelId: string, tipo: 'teórico' | 'real'): number => {
+    const nivel = niveles.find(n => n.id === nivelId)
+    if (!nivel) return 0
+
+    if (NIVELES_CALCULADOS.includes(nivel.codigo)) {
+      return tipo === 'teórico' ? getCalculadoTeorico(nivel.codigo) : getCalculadoReal(nivel.codigo)
+    }
+
     const cuentasNivel = cuentas.filter(c => c.nivelId === nivelId)
     return cuentasNivel.reduce((sum, cuenta) => {
       return sum + (tipo === 'teórico' ? getTeoricoCuenta(cuenta) : getRealCuenta(cuenta.id))
@@ -189,8 +249,13 @@ export function PLModule() {
     )
   }
 
-  const totalVentasTeorico = getTotalVentas('teórico')
-  const totalVentasReal = getTotalVentas('real')
+  // Cálculos para cards de resumen
+  const ventaNetaTeorico = getCalculadoTeorico('VN')
+  const ventaNetaReal = getCalculadoReal('VN')
+  const contribMarginalTeorico = getCalculadoTeorico('CM')
+  const contribMarginalReal = getCalculadoReal('CM')
+  const profitTeorico = getCalculadoTeorico('PF')
+  const profitReal = getCalculadoReal('PF')
 
   return (
     <div className="space-y-6">
@@ -198,7 +263,7 @@ export function PLModule() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Estado de Resultados (P&L)</h2>
-          <p className="text-gray-400">Carga el teórico por item · Totales automáticos · % sobre ventas</p>
+          <p className="text-gray-400">Carga el teórico por item · Cálculos automáticos · % sobre ventas</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -224,44 +289,50 @@ export function PLModule() {
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center gap-3">
         <Info className="w-5 h-5 text-blue-400" />
         <div className="text-sm text-blue-300">
-          <strong>Teórico:</strong> Edita cada item. El total de la cuenta se calcula automáticamente.
-          <strong className="ml-2">Real:</strong> Viene del Cashflow según asociaciones.
-          <strong className="ml-2">%:</strong> Porcentaje sobre ventas totales.
+          <strong>Cálculos automáticos:</strong> Venta Neta = VB - CV | Contrib. Marginal = VN - CMV | Profit = CM - GO
         </div>
       </div>
 
-      {/* Cards */}
+      {/* Cards de Resumen */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
-          <div className="flex items-center gap-2 text-green-400 mb-2">
-            <TrendingUp className="w-5 h-5" />
-            <span className="text-sm">Teórico</span>
-          </div>
-          <div className="text-2xl font-bold text-white">{formatCurrency(totalVentasTeorico)}</div>
-        </div>
-        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
-          <div className="flex items-center gap-2 text-green-400 mb-2">
-            <TrendingUp className="w-5 h-5" />
-            <span className="text-sm">Real</span>
-          </div>
-          <div className="text-2xl font-bold text-white">{formatCurrency(totalVentasReal)}</div>
-        </div>
         <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
           <div className="flex items-center gap-2 text-blue-400 mb-2">
             <DollarSign className="w-5 h-5" />
-            <span className="text-sm">Diferencia</span>
+            <span className="text-sm">Venta Neta</span>
           </div>
-          <div className={`text-2xl font-bold ${totalVentasReal - totalVentasTeorico >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {formatCurrency(totalVentasReal - totalVentasTeorico)}
+          <div className="text-xl font-bold text-white">{formatCurrency(ventaNetaTeorico)}</div>
+          <div className="text-sm text-gray-400">Real: {formatCurrency(ventaNetaReal)}</div>
+        </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-purple-400 mb-2">
+            <TrendingUp className="w-5 h-5" />
+            <span className="text-sm">Contrib. Marginal</span>
+          </div>
+          <div className="text-xl font-bold text-white">{formatCurrency(contribMarginalTeorico)}</div>
+          <div className="text-sm text-gray-400">Real: {formatCurrency(contribMarginalReal)}</div>
+        </div>
+        <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
+          <div className="flex items-center gap-2 text-green-400 mb-2">
+            <Calculator className="w-5 h-5" />
+            <span className="text-sm">Profit</span>
+          </div>
+          <div className={`text-xl font-bold ${profitTeorico >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {formatCurrency(profitTeorico)}
+          </div>
+          <div className={`text-sm ${profitReal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            Real: {formatCurrency(profitReal)}
           </div>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
           <div className="flex items-center gap-2 text-yellow-400 mb-2">
-            <Calculator className="w-5 h-5" />
-            <span className="text-sm">% Cumpl.</span>
+            <Percent className="w-5 h-5" />
+            <span className="text-sm">Margen Profit</span>
           </div>
-          <div className={`text-2xl font-bold ${totalVentasReal >= totalVentasTeorico ? 'text-green-400' : 'text-yellow-400'}`}>
-            {totalVentasTeorico > 0 ? `${((totalVentasReal / totalVentasTeorico) * 100).toFixed(0)}%` : '-'}
+          <div className={`text-xl font-bold ${profitTeorico >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {totalVentasTeorico > 0 ? `${((profitTeorico / totalVentasTeorico) * 100).toFixed(1)}%` : '-'}
+          </div>
+          <div className="text-sm text-gray-400">
+            Real: {totalVentasReal > 0 ? `${((profitReal / totalVentasReal) * 100).toFixed(1)}%` : '-'}
           </div>
         </div>
       </div>
@@ -281,16 +352,36 @@ export function PLModule() {
           </div>
 
           {niveles.map((nivel) => {
+            const esCalculado = NIVELES_CALCULADOS.includes(nivel.codigo)
             const cuentasNivel = cuentas.filter(c => c.nivelId === nivel.id)
             const totalNivelTeorico = getTotalNivel(nivel.id, 'teórico')
             const totalNivelReal = getTotalNivel(nivel.id, 'real')
             
+            // Determinar colores especiales por tipo
+            const getNivelColor = () => {
+              if (nivel.codigo === 'PF') return 'bg-green-500/20 border-green-500/30'
+              if (nivel.codigo === 'VN' || nivel.codigo === 'CM') return 'bg-purple-500/10 border-purple-500/20'
+              return 'bg-[#2d2d2d]'
+            }
+
+            const getNivelTextStyle = () => {
+              if (nivel.codigo === 'PF') return 'text-green-400'
+              if (nivel.codigo === 'VN' || nivel.codigo === 'CM') return 'text-purple-400'
+              return 'text-white'
+            }
+            
             return (
               <div key={nivel.id} className="border-b border-white/10">
                 {/* Header del Nivel con total */}
-                <div className="grid grid-cols-14 gap-1 p-3 bg-[#2d2d2d] items-center">
-                  <div className="col-span-4">
-                    <h3 className="text-white font-semibold">{nivel.nombre}</h3>
+                <div className={`grid grid-cols-14 gap-1 p-3 ${getNivelColor()} items-center`}>
+                  <div className="col-span-4 flex items-center gap-2">
+                    {esCalculado && <Calculator className="w-4 h-4 text-yellow-400" />}
+                    <h3 className={`font-semibold ${getNivelTextStyle()}`}>
+                      {nivel.nombre}
+                    </h3>
+                    {esCalculado && (
+                      <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded">AUTO</span>
+                    )}
                   </div>
                   <div className="col-span-2 text-center text-blue-400 font-bold">
                     {formatCurrency(totalNivelTeorico)}
@@ -311,12 +402,25 @@ export function PLModule() {
                   </div>
                   <div className="col-span-2 text-center">
                     <span className={`font-bold ${totalNivelReal >= totalNivelTeorico ? 'text-green-400' : 'text-red-400'}`}>
-                      {totalNivelTeorico > 0 ? `${((totalNivelReal / totalNivelTeorico) * 100).toFixed(0)}%` : '-'}
+                      {totalNivelTeorico !== 0 ? `${((totalNivelReal / totalNivelTeorico) * 100).toFixed(0)}%` : '-'}
                     </span>
                   </div>
                 </div>
                 
-                {cuentasNivel.map((cuenta) => {
+                {/* Si es nivel calculado, mostrar fórmula */}
+                {esCalculado && (
+                  <div className="px-4 py-2 bg-yellow-500/5 border-b border-white/5">
+                    <div className="flex items-center gap-2 text-xs text-yellow-300">
+                      <ArrowDown className="w-3 h-3" />
+                      {nivel.codigo === 'VN' && 'Venta Bruta - Costo de Venta'}
+                      {nivel.codigo === 'CM' && 'Venta Neta - CMV'}
+                      {nivel.codigo === 'PF' && 'Contribución Marginal - Gastos Operativos'}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Cuentas del nivel (solo si no es calculado) */}
+                {!esCalculado && cuentasNivel.map((cuenta) => {
                   const hasItems = cuenta.cashflowItems && cuenta.cashflowItems.length > 0
                   const teoricoTotal = getTeoricoCuenta(cuenta)
                   const realTotal = getRealCuenta(cuenta.id)
@@ -325,7 +429,7 @@ export function PLModule() {
                     <div key={cuenta.id}>
                       {/* Fila de cuenta */}
                       <div 
-                        className={`grid grid-cols-14 gap-1 p-3 items-center hover:bg-white/5 ${cuenta.esResultado ? 'bg-green-500/10' : ''} cursor-pointer`}
+                        className={`grid grid-cols-14 gap-1 p-3 items-center hover:bg-white/5 cursor-pointer`}
                         onClick={() => hasItems && toggleCuenta(cuenta.id)}
                       >
                         <div className="col-span-4 flex items-center gap-2">
@@ -334,7 +438,7 @@ export function PLModule() {
                               {expandedCuentas.has(cuenta.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </span>
                           )}
-                          <span className={`${cuenta.esResultado ? 'text-green-400 font-semibold' : 'text-white'} ${hasItems ? '' : 'ml-6'}`}>
+                          <span className={`text-white ${hasItems ? '' : 'ml-6'}`}>
                             {cuenta.nombre}
                           </span>
                           {hasItems && <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">{cuenta.cashflowItems.length}</span>}
