@@ -217,17 +217,21 @@ export function CashflowModule() {
   // === AGRUPACIÓN POR NIVEL P&L ===
 
   const getItemsPorNivel = (tipo: 'ingreso' | 'egreso'): Map<string, CashflowItem[]> => {
-    const categoria = categorias.find(c => c.tipo === tipo)
-    if (!categoria) return new Map()
+    // Obtener TODAS las categorías del tipo (no solo la primera)
+    const categoriasDelTipo = categorias.filter(c => c.tipo === tipo)
+    if (categoriasDelTipo.length === 0) return new Map()
 
     const itemsPorNivel = new Map<string, CashflowItem[]>()
     
-    categoria.items.forEach(item => {
-      const nivelId = item.cuentaPL?.nivelId || 'sin-nivel'
-      if (!itemsPorNivel.has(nivelId)) {
-        itemsPorNivel.set(nivelId, [])
-      }
-      itemsPorNivel.get(nivelId)!.push(item)
+    // Combinar items de todas las categorías del mismo tipo
+    categoriasDelTipo.forEach(categoria => {
+      categoria.items.forEach(item => {
+        const nivelId = item.cuentaPL?.nivelId || 'sin-nivel'
+        if (!itemsPorNivel.has(nivelId)) {
+          itemsPorNivel.set(nivelId, [])
+        }
+        itemsPorNivel.get(nivelId)!.push(item)
+      })
     })
 
     return itemsPorNivel
