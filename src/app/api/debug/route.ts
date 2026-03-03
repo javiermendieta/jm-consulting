@@ -1,68 +1,35 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 
+// GET - Debug de variables de entorno (sin mostrar contraseña completa)
 export async function GET() {
-  try {
-    // Test basic connection
-    const niveles = await db.nivelPL.findMany({
-      take: 5,
-      orderBy: { orden: 'asc' }
-    })
-    
-    const cuentasCount = await db.cuentaPL.count()
-    const itemsCount = await db.cashflowItem.count()
-    const entriesCount = await db.cashflowEntry.count()
-    
-    // Test forecast tables
-    let restaurantesCount = 0
-    let turnosCount = 0
-    let canalesCount = 0
-    let forecastEntriesCount = 0
-    
+  const dbUrl = process.env.DATABASE_URL || ''
+  const directUrl = process.env.DIRECT_DATABASE_URL || ''
+  
+  // Ocultar contraseña pero mostrar el host
+  const maskPassword = (url: string) => {
+    if (!url) return 'NOT_SET'
     try {
-      restaurantesCount = await db.restaurante.count()
-    } catch (e) {
-      console.log('Error counting restaurantes:', e)
+      const match = url.match(/postgresql:\/\/([^:]+):([^@]+)@(.+)/)
+      if (match) {
+        const [, user, pass, host] = match
+        const maskedPass = pass ? `${pass.substring(0, 3)}***` : 'none'
+        return `postgresql://${user}:${maskedPass}@${host}`
+      }
+      return url.substring(0, 30) + '...'
+    } catch {
+      return 'PARSE_ERROR'
     }
-    
-    try {
-      turnosCount = await db.turno.count()
-    } catch (e) {
-      console.log('Error counting turnos:', e)
-    }
-    
-    try {
-      canalesCount = await db.canal.count()
-    } catch (e) {
-      console.log('Error counting canales:', e)
-    }
-    
-    try {
-      forecastEntriesCount = await db.forecastEntry.count()
-    } catch (e) {
-      console.log('Error counting forecastEntries:', e)
-    }
-    
-    return NextResponse.json({
-      status: 'connected',
-      counts: {
-        niveles: niveles.length,
-        cuentas: cuentasCount,
-        items: itemsCount,
-        entries: entriesCount,
-        restaurantes: restaurantesCount,
-        turnos: turnosCount,
-        canales: canalesCount,
-        forecastEntries: forecastEntriesCount
-      },
-      sampleNiveles: niveles.map(n => ({ id: n.id, codigo: n.codigo, nombre: n.nombre }))
-    })
-  } catch (error) {
-    console.error('Database error:', error)
-    return NextResponse.json({
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    }, { status: 500 })
   }
+
+  return NextResponse.json({
+    environment: process.env.NODE_ENV,
+    databaseUrl: maskPassword(dbUrl),
+    directUrl: maskPassword(directUrl),
+    hasDbUrl: !!dbUrl,
+    hasDirectUrl: !!directUrl,
+    dbUrlLength: dbUrl.length,
+    directUrlLength: directUrl.length,
+    // Verificar si tiene pgbouncer
+    hasPgBouncer: dbUrl.includes('pgbouncer'),
+  })
 }
