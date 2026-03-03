@@ -1,34 +1,34 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET - Listar todos los tipos de día
+// GET - Listar tipos de día
 export async function GET() {
   try {
-    const tiposDia = await db.tipoDia.findMany()
-    return NextResponse.json(tiposDia)
+    const tipos = await db.tipoDia.findMany({
+      orderBy: { nombre: 'asc' }
+    })
+    return NextResponse.json(tipos)
   } catch (error) {
-    console.error('Error fetching tipos dia:', error)
-    return NextResponse.json({ error: 'Error al obtener tipos de día' }, { status: 500 })
+    console.error('Error fetching tipos de día:', error)
+    return NextResponse.json([])
   }
 }
 
-// POST - Crear nuevo tipo de día
-export async function POST(request: Request) {
+// POST - Crear tipo de día
+export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
-    
-    const tipoDia = await db.tipoDia.create({
+    const tipo = await db.tipoDia.create({
       data: {
         nombre: data.nombre,
         codigo: data.codigo,
-        color: data.color,
+        color: data.color || '#22c55e',
         icono: data.icono
       }
     })
-
-    return NextResponse.json(tipoDia)
+    return NextResponse.json(tipo)
   } catch (error) {
-    console.error('Error creating tipo dia:', error)
+    console.error('Error creating tipo de día:', error)
     return NextResponse.json({ error: 'Error al crear tipo de día' }, { status: 500 })
   }
 }

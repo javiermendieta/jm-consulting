@@ -9,37 +9,31 @@ export async function GET(request: NextRequest) {
     const fechaFin = searchParams.get('fechaFin')
     const restauranteId = searchParams.get('restauranteId')
     const canalId = searchParams.get('canalId')
+    const turnoId = searchParams.get('turnoId')
 
-    // Si no hay fechas, devolver array vacío
-    if (!fechaInicio || !fechaFin || fechaInicio === 'undefined' || fechaFin === 'undefined') {
+    if (!fechaInicio || !fechaFin || fechaInicio === 'undefined') {
       return NextResponse.json([])
     }
 
-    const where: any = {}
-    
-    where.fecha = {
-      gte: new Date(fechaInicio),
-      lte: new Date(fechaFin)
+    const where: any = {
+      fecha: {
+        gte: new Date(fechaInicio),
+        lte: new Date(fechaFin)
+      }
     }
     
-    if (restauranteId) where.restauranteId = restauranteId
-    if (canalId) where.canalId = canalId
+    if (restauranteId && restauranteId !== 'undefined') where.restauranteId = restauranteId
+    if (canalId && canalId !== 'undefined') where.canalId = canalId
+    if (turnoId && turnoId !== 'undefined') where.turnoId = turnoId
 
     const entries = await db.forecastEntry.findMany({
       where,
-      include: {
-        restaurante: true,
-        canal: true,
-        turno: true,
-        tipoDia: true
-      },
       orderBy: { fecha: 'asc' }
     })
 
     return NextResponse.json(entries)
   } catch (error) {
     console.error('Error fetching forecast entries:', error)
-    // Devolver array vacío en caso de error para evitar errores en el frontend
     return NextResponse.json([])
   }
 }
@@ -56,6 +50,15 @@ export async function POST(request: NextRequest) {
     const trimestre = Math.ceil(mes / 3)
     const año = fecha.getFullYear()
 
+    // Buscar tipo de día por defecto si no viene
+    let tipoDiaId = data.tipoDiaId
+    if (!tipoDiaId) {
+      const tipoNormal = await db.tipoDia.findFirst({
+        where: { codigo: 'NORMAL' }
+      })
+      tipoDiaId = tipoNormal?.id
+    }
+
     const entry = await db.forecastEntry.upsert({
       where: {
         fecha_turnoId_restauranteId_canalId: {
@@ -66,26 +69,22 @@ export async function POST(request: NextRequest) {
         }
       },
       update: {
-        tipoDiaId: data.tipoDiaId,
-        paxTeorico: data.paxTeorico,
-        paxReal: data.paxReal,
-        ventaTeorica: data.ventaTeorica,
-        ventaReal: data.ventaReal,
-        ticketTeorico: data.ticketTeorico,
-        ticketReal: data.ticketReal
+        tipoDiaId: tipoDiaId,
+        paxTeorico: data.paxTeorico ?? null,
+        paxReal: data.paxReal ?? null,
+        ventaTeorica: data.ventaTeorica ?? null,
+        ventaReal: data.ventaReal ?? null
       },
       create: {
         fecha: fecha,
         turnoId: data.turnoId,
         restauranteId: data.restauranteId,
         canalId: data.canalId,
-        tipoDiaId: data.tipoDiaId,
-        paxTeorico: data.paxTeorico,
-        paxReal: data.paxReal,
-        ventaTeorica: data.ventaTeorica,
-        ventaReal: data.ventaReal,
-        ticketTeorico: data.ticketTeorico,
-        ticketReal: data.ticketReal,
+        tipoDiaId: tipoDiaId!,
+        paxTeorico: data.paxTeorico ?? null,
+        paxReal: data.paxReal ?? null,
+        ventaTeorica: data.ventaTeorica ?? null,
+        ventaReal: data.ventaReal ?? null,
         semana,
         mes,
         trimestre,

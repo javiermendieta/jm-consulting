@@ -1,33 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET - Listar todos los turnos
+// GET - Listar turnos
 export async function GET() {
   try {
     const turnos = await db.turno.findMany({
-      orderBy: { horaInicio: 'asc' }
+      orderBy: { nombre: 'asc' }
     })
     return NextResponse.json(turnos)
   } catch (error) {
     console.error('Error fetching turnos:', error)
-    return NextResponse.json({ error: 'Error al obtener turnos' }, { status: 500 })
+    return NextResponse.json([])
   }
 }
 
-// POST - Crear nuevo turno
+// POST - Crear turno
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
-    
     const turno = await db.turno.create({
       data: {
         nombre: data.nombre,
         codigo: data.codigo,
-        horaInicio: data.horaInicio,
-        horaFin: data.horaFin
+        horaInicio: data.horaInicio || '00:00',
+        horaFin: data.horaFin || '23:59'
       }
     })
-
     return NextResponse.json(turno)
   } catch (error) {
     console.error('Error creating turno:', error)
