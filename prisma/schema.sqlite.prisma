@@ -1,0 +1,246 @@
+// Prisma Schema para DESARROLLO LOCAL (SQLite)
+// Para producción, usar schema.prisma con PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== CONSULTORÍA ====================
+
+model ProyectoConsultoria { 
+  id            String        @id @default(uuid())
+  nombre        String
+  cliente       String
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  estado        String        @default("activo")
+  valorContrato Float         @default(0)
+  fases         Fase[]
+  entregables   Entregable[]
+  pendientes    PendienteCliente[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Fase { 
+  id           String     @id @default(uuid())
+  proyectoId   String
+  proyecto     ProyectoConsultoria @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre       String
+  orden        Int
+  fechaInicio  DateTime
+  fechaFin     DateTime
+  estado       String     @default("pendiente")
+  semanas      Semana[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Semana { 
+  id          String   @id @default(uuid())
+  faseId      String
+  fase        Fase     @relation(fields: [faseId], references: [id], onDelete: Cascade)
+  numero      Int
+  fechaInicio DateTime
+  fechaFin    DateTime
+  estado      String   @default("pendiente")
+  notas       String?
+  tareas      Tarea[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Tarea { 
+  id           String   @id @default(uuid())
+  semanaId     String
+  semana       Semana   @relation(fields: [semanaId], references: [id], onDelete: Cascade)
+  titulo       String
+  descripcion  String?
+  estado       String   @default("pendiente")
+  prioridad    String   @default("media")
+  responsable  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Entregable { 
+  id            String    @id @default(uuid())
+  proyectoId    String
+  proyecto      ProyectoConsultoria @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre        String
+  tipo          String
+  estado        String    @default("pendiente")
+  fechaEntrega  DateTime?
+  configuracion String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ==================== FORECAST ====================
+
+model Restaurante { 
+  id              String          @id @default(uuid())
+  nombre          String
+  codigo          String          @unique
+  activo          Boolean         @default(true)
+  orden           Int             @default(0)
+  forecastEntries ForecastEntry[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Canal { 
+  id              String          @id @default(uuid())
+  nombre          String
+  codigo          String          @unique
+  activo          Boolean         @default(true)
+  orden           Int             @default(0)
+  forecastEntries ForecastEntry[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Turno { 
+  id              String          @id @default(uuid())
+  nombre          String
+  codigo          String          @unique
+  horaInicio      String
+  horaFin         String
+  forecastEntries ForecastEntry[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model TipoDia { 
+  id              String          @id @default(uuid())
+  nombre          String
+  codigo          String          @unique
+  color           String
+  icono           String?
+  forecastEntries ForecastEntry[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model ForecastEntry { 
+  id             String    @id @default(uuid())
+  fecha          DateTime
+  turnoId        String
+  turno          Turno     @relation(fields: [turnoId], references: [id])
+  restauranteId  String
+  restaurante    Restaurante @relation(fields: [restauranteId], references: [id])
+  canalId        String
+  canal          Canal     @relation(fields: [canalId], references: [id])
+  tipoDiaId      String
+  tipoDia        TipoDia   @relation(fields: [tipoDiaId], references: [id])
+  paxTeorico     Float?
+  paxReal        Float?
+  ventaTeorica   Float?
+  ventaReal      Float?
+  ticketTeorico  Float?
+  ticketReal     Float?
+  semana         Int
+  mes            Int
+  trimestre      Int
+  año            Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  @@unique([fecha, turnoId, restauranteId, canalId])
+}
+
+// ==================== P&L ====================
+
+model NivelPL { 
+  id        String     @id @default(uuid())
+  codigo    String     @unique
+  nombre    String
+  orden     Int
+  cuentas   CuentaPL[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CuentaPL { 
+  id           String     @id @default(uuid())
+  nivelId      String
+  nivel        NivelPL    @relation(fields: [nivelId], references: [id])
+  nombre       String
+  padreId      String?
+  padre        CuentaPL?  @relation("Subcuentas", fields: [padreId], references: [id], onDelete: Cascade)
+  subcuentas   CuentaPL[] @relation("Subcuentas")
+  orden        Int        @default(0)
+  esSubtotal   Boolean    @default(false)
+  esResultado  Boolean    @default(false)
+  valores      PLValor[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model PLValor { 
+  id                  String    @id @default(uuid())
+  cuentaId            String
+  cuenta              CuentaPL  @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  periodo             String
+  tipoVista           String
+  forecastMonto       Float?
+  forecastPorcentaje  Float?
+  realMonto           Float?
+  realPorcentaje      Float?
+  atribucion          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  @@unique([cuentaId, periodo, tipoVista])
+}
+
+// ==================== CONFIGURACIÓN ====================
+
+model Dimension { 
+  id        String           @id @default(uuid())
+  nombre    String
+  activo    Boolean          @default(true)
+  orden     Int              @default(0)
+  valores   DimensionValor[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model DimensionValor { 
+  id          String     @id @default(uuid())
+  dimensionId String
+  dimension   Dimension  @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+  nombre      String
+  codigo      String
+  color       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model TemplateExcel { 
+  id            String   @id @default(uuid())
+  nombre        String
+  tipo          String
+  configuracion String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PendienteCliente {
+  id           String   @id @default(uuid())
+  proyectoId   String
+  proyecto     ProyectoConsultoria @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  descripcion  String
+  estado       String   @default("pendiente")
+  prioridad    String   @default("media")
+  fechaLimite  DateTime?
+  responsable  String?
+  notas        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
