@@ -80,6 +80,15 @@ interface PendienteCliente {
   fechaLimite?: string
   responsable?: string
   notas?: string
+  semanaId?: string
+  semana?: {
+    id: string
+    numero: number
+    fase?: {
+      id: string
+      nombre: string
+    }
+  }
 }
 
 
@@ -133,6 +142,9 @@ export function ConsultingModule() {
 
   // Filtro de entregables por semana
   const [filtroSemana, setFiltroSemana] = useState<string>('todas')
+  
+  // Filtro de pendientes por semana
+  const [filtroSemanaPendientes, setFiltroSemanaPendientes] = useState<string>('todas')
 
 
   // Form state
@@ -176,7 +188,8 @@ export function ConsultingModule() {
     prioridad: 'media',
     fechaLimite: '',
     responsable: '',
-    notas: ''
+    notas: '',
+    semanaId: ''
   })
 
 
@@ -589,7 +602,8 @@ export function ConsultingModule() {
       prioridad: pendiente.prioridad,
       fechaLimite: pendiente.fechaLimite ? pendiente.fechaLimite.split('T')[0] : '',
       responsable: pendiente.responsable || '',
-      notas: pendiente.notas || ''
+      notas: pendiente.notas || '',
+      semanaId: pendiente.semanaId || ''
     })
   }
 
@@ -889,11 +903,23 @@ export function ConsultingModule() {
         {/* Pendientes del Cliente */}
         <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Pendientes del Cliente</h3>
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-semibold text-white">Pendientes del Cliente</h3>
+              <select
+                value={filtroSemanaPendientes}
+                onChange={(e) => setFiltroSemanaPendientes(e.target.value)}
+                className="px-3 py-1 bg-[#0d0d0d] border border-white/10 rounded-lg text-white text-sm"
+              >
+                <option value="todas">Todas las semanas</option>
+                {getSemanasProyecto(proyecto).map(s => (
+                  <option key={s.id} value={s.id}>{s.faseNombre} - Semana {s.numero}</option>
+                ))}
+              </select>
+            </div>
             <button 
               onClick={() => {
                 setShowNuevoPendiente(true)
-                setPendienteForm({ descripcion: '', estado: 'pendiente', prioridad: 'media', fechaLimite: '', responsable: '', notas: '' })
+                setPendienteForm({ descripcion: '', estado: 'pendiente', prioridad: 'media', fechaLimite: '', responsable: '', notas: '', semanaId: '' })
               }}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm"
             >
@@ -905,7 +931,9 @@ export function ConsultingModule() {
             {proyecto.pendientes.length === 0 ? (
               <p className="text-gray-500 text-center py-4">No hay pendientes del cliente</p>
             ) : (
-              proyecto.pendientes.map((pendiente) => (
+              proyecto.pendientes
+                .filter(p => filtroSemanaPendientes === 'todas' || p.semanaId === filtroSemanaPendientes)
+                .map((pendiente) => (
                 <div key={pendiente.id} className="flex items-center justify-between p-3 bg-[#0d0d0d] rounded-lg">
                   <div className="flex items-center gap-3 flex-1">
                     <select
@@ -918,6 +946,11 @@ export function ConsultingModule() {
                       ))}
                     </select>
                     <span className="text-white">{pendiente.descripcion}</span>
+                    {pendiente.semana && (
+                      <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                        {pendiente.semana.fase?.nombre} - Semana {pendiente.semana.numero}
+                      </span>
+                    )}
                     {pendiente.fechaLimite && (
                       <span className="text-xs text-gray-400">
                         {new Date(pendiente.fechaLimite).toLocaleDateString()}
@@ -1168,6 +1201,19 @@ export function ConsultingModule() {
                   <label className="block text-sm text-gray-400 mb-1">Descripción *</label>
                   <textarea value={pendienteForm.descripcion} onChange={(e) => setPendienteForm({...pendienteForm, descripcion: e.target.value})} className="w-full px-3 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white" rows={2} placeholder="¿Qué pendiente tiene el cliente?" />
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Asignar a Semana</label>
+                  <select 
+                    value={pendienteForm.semanaId} 
+                    onChange={(e) => setPendienteForm({...pendienteForm, semanaId: e.target.value})} 
+                    className="w-full px-3 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white"
+                  >
+                    <option value="">Sin asignar</option>
+                    {getSemanasProyecto(proyecto).map(s => (
+                      <option key={s.id} value={s.id}>{s.faseNombre} - Semana {s.numero}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-400 mb-1">Prioridad</label>
@@ -1209,6 +1255,19 @@ export function ConsultingModule() {
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Descripción *</label>
                   <textarea value={pendienteForm.descripcion} onChange={(e) => setPendienteForm({...pendienteForm, descripcion: e.target.value})} className="w-full px-3 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white" rows={2} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Asignar a Semana</label>
+                  <select 
+                    value={pendienteForm.semanaId} 
+                    onChange={(e) => setPendienteForm({...pendienteForm, semanaId: e.target.value})} 
+                    className="w-full px-3 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white"
+                  >
+                    <option value="">Sin asignar</option>
+                    {getSemanasProyecto(proyecto).map(s => (
+                      <option key={s.id} value={s.id}>{s.faseNombre} - Semana {s.numero}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

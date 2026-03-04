@@ -53,6 +53,7 @@ model Semana {
   notas       String?
   tareas      Tarea[]
   entregables Entregable[]
+  pendientes  PendienteCliente[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -89,6 +90,8 @@ model PendienteCliente {
   id           String   @id @default(uuid())
   proyectoId   String
   proyecto     ProyectoConsultoria @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  semanaId     String?
+  semana       Semana?  @relation(fields: [semanaId], references: [id])
   descripcion  String
   estado       String   @default("pendiente")
   prioridad    String   @default("media")

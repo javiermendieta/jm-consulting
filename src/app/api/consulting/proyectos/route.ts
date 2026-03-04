@@ -30,7 +30,20 @@ export async function GET() {
             }
           }
         },
-        pendientes: true
+        pendientes: {
+          include: {
+            semana: {
+              include: {
+                fase: {
+                  select: {
+                    id: true,
+                    nombre: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -115,7 +128,20 @@ export async function POST(request: NextRequest) {
             }
           }
         },
-        pendientes: true
+        pendientes: {
+          include: {
+            semana: {
+              include: {
+                fase: {
+                  select: {
+                    id: true,
+                    nombre: true
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     })
 
@@ -170,7 +196,20 @@ export async function PUT(request: NextRequest) {
             }
           }
         },
-        pendientes: true
+        pendientes: {
+          include: {
+            semana: {
+              include: {
+                fase: {
+                  select: {
+                    id: true,
+                    nombre: true
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     })
 

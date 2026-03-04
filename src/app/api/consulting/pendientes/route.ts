@@ -13,6 +13,18 @@ export async function GET(request: NextRequest) {
 
     const pendientes = await db.pendienteCliente.findMany({
       where: { proyectoId },
+      include: {
+        semana: {
+          include: {
+            fase: {
+              select: {
+                id: true,
+                nombre: true
+              }
+            }
+          }
+        }
+      },
       orderBy: [
         { prioridad: 'desc' },
         { createdAt: 'desc' }
@@ -43,7 +55,20 @@ export async function POST(request: NextRequest) {
         prioridad: data.prioridad || 'media',
         fechaLimite: data.fechaLimite ? new Date(data.fechaLimite) : null,
         responsable: data.responsable || null,
-        notas: data.notas || null
+        notas: data.notas || null,
+        semanaId: data.semanaId || null
+      },
+      include: {
+        semana: {
+          include: {
+            fase: {
+              select: {
+                id: true,
+                nombre: true
+              }
+            }
+          }
+        }
       }
     })
 
@@ -71,7 +96,20 @@ export async function PUT(request: NextRequest) {
         prioridad: data.prioridad,
         fechaLimite: data.fechaLimite ? new Date(data.fechaLimite) : null,
         responsable: data.responsable,
-        notas: data.notas
+        notas: data.notas,
+        semanaId: data.semanaId || null
+      },
+      include: {
+        semana: {
+          include: {
+            fase: {
+              select: {
+                id: true,
+                nombre: true
+              }
+            }
+          }
+        }
       }
     })
 
