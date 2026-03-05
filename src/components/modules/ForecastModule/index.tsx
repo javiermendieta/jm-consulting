@@ -114,10 +114,14 @@ function ForecastTab() {
   const [selectedRestaurante, setSelectedRestaurante] = useState<string>('')
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
-  const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  const [selectedDayFrom, setSelectedDayFrom] = useState<number | null>(null)
+  const [selectedDayTo, setSelectedDayTo] = useState<number | null>(null)
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number | null>(null) // 0-6 (domingo-sábado)
   
   const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+  
+  // Calcular días del mes actual para validación
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
   
   // Expansión
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
@@ -503,9 +507,12 @@ function ForecastTab() {
       }))
     }))
     
-    // Filtrar por día numérico si está seleccionado
-    if (selectedDay !== null) {
-      data = data.filter(d => d.diaNum === selectedDay)
+    // Filtrar por rango de días (desde - hasta)
+    if (selectedDayFrom !== null) {
+      data = data.filter(d => d.diaNum >= selectedDayFrom)
+    }
+    if (selectedDayTo !== null) {
+      data = data.filter(d => d.diaNum <= selectedDayTo)
     }
     
     // Filtrar por día de la semana si está seleccionado
@@ -517,7 +524,7 @@ function ForecastTab() {
     }
     
     return data
-  }, [groupedData, selectedTurnos, selectedCanales, selectedDay, selectedDayOfWeek])
+  }, [groupedData, selectedTurnos, selectedCanales, selectedDayFrom, selectedDayTo, selectedDayOfWeek])
 
   // Calcular totales del mes (basado en datos filtrados)
   const monthTotals = useMemo(() => {
@@ -714,33 +721,53 @@ function ForecastTab() {
             ))}
           </select>
           
-          {/* Filtro de día */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Día:</span>
+          {/* Filtro de rango de días */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-400 mr-1">Días:</span>
             <input
               type="number"
               min="1"
-              max="31"
-              value={selectedDay ?? ''}
+              max={daysInMonth}
+              value={selectedDayFrom ?? ''}
               onChange={(e) => {
                 const val = e.target.value
                 if (val === '') {
-                  setSelectedDay(null)
+                  setSelectedDayFrom(null)
                 } else {
                   const num = Number(val)
-                  if (num >= 1 && num <= 31) {
-                    setSelectedDay(num)
+                  if (num >= 1 && num <= daysInMonth) {
+                    setSelectedDayFrom(num)
                   }
                 }
               }}
-              placeholder="Todos"
+              placeholder="Desde"
               className="w-16 px-2 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white text-sm text-center focus:outline-none focus:border-blue-500"
             />
-            {selectedDay !== null && (
+            <span className="text-gray-500">-</span>
+            <input
+              type="number"
+              min="1"
+              max={daysInMonth}
+              value={selectedDayTo ?? ''}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === '') {
+                  setSelectedDayTo(null)
+                } else {
+                  const num = Number(val)
+                  if (num >= 1 && num <= daysInMonth) {
+                    setSelectedDayTo(num)
+                  }
+                }
+              }}
+              placeholder="Hasta"
+              className="w-16 px-2 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white text-sm text-center focus:outline-none focus:border-blue-500"
+            />
+            {(selectedDayFrom !== null || selectedDayTo !== null) && (
               <button
-                onClick={() => setSelectedDay(null)}
+                onClick={() => { setSelectedDayFrom(null); setSelectedDayTo(null) }}
                 className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
-                title="Limpiar filtro de día"
+                title="Limpiar filtro de días"
               >
                 <X className="w-4 h-4" />
               </button>
