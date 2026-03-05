@@ -114,6 +114,7 @@ function ForecastTab() {
   const [selectedRestaurante, setSelectedRestaurante] = useState<string>('')
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
   
   // Expansión
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
@@ -489,16 +490,23 @@ function ForecastTab() {
     }
   }, [canales])
 
-  // Datos filtrados según turnos y canales seleccionados
+  // Datos filtrados según turnos, canales y día seleccionados
   const filteredData = useMemo(() => {
-    return groupedData.map(day => ({
+    let data = groupedData.map(day => ({
       ...day,
       turnos: day.turnos.filter(t => selectedTurnos.has(t.turnoId)).map(turno => ({
         ...turno,
         canales: turno.canales.filter(c => selectedCanales.has(c.canalId))
       }))
     }))
-  }, [groupedData, selectedTurnos, selectedCanales])
+    
+    // Filtrar por día si está seleccionado
+    if (selectedDay !== null) {
+      data = data.filter(d => d.diaNum === selectedDay)
+    }
+    
+    return data
+  }, [groupedData, selectedTurnos, selectedCanales, selectedDay])
 
   // Calcular totales del mes (basado en datos filtrados)
   const monthTotals = useMemo(() => {
@@ -694,6 +702,40 @@ function ForecastTab() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          
+          {/* Filtro de día */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Día:</span>
+            <input
+              type="number"
+              min="1"
+              max="31"
+              value={selectedDay ?? ''}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === '') {
+                  setSelectedDay(null)
+                } else {
+                  const num = Number(val)
+                  if (num >= 1 && num <= 31) {
+                    setSelectedDay(num)
+                  }
+                }
+              }}
+              placeholder="Todos"
+              className="w-16 px-2 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white text-sm text-center focus:outline-none focus:border-blue-500"
+            />
+            {selectedDay !== null && (
+              <button
+                onClick={() => setSelectedDay(null)}
+                className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
+                title="Limpiar filtro de día"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          
           <select
             value={selectedRestaurante}
             onChange={(e) => setSelectedRestaurante(e.target.value)}
