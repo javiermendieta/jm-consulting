@@ -11,8 +11,10 @@ import {
   BarChart3,
   AlertCircle,
   Filter,
-  X
+  X,
+  Download
 } from 'lucide-react'
+import ExcelJS from 'exceljs'
 
 // ==================== TIPOS ====================
 interface ForecastEntry {
@@ -559,6 +561,101 @@ function ForecastTab() {
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ]
 
+  // ========== EXPORTAR A EXCEL ==========
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Forecast')
+    
+    const restauranteNombre = restaurantes.find(r => r.id === selectedRestaurante)?.nombre || 'Restaurante'
+    const mesNombre = months[selectedMonth - 1]
+    
+    // Título
+    worksheet.mergeCells('A1:K1')
+    worksheet.getCell('A1').value = `Forecast ${restauranteNombre} - ${mesNombre} ${selectedYear}`
+    worksheet.getCell('A1').font = { size: 16, bold: true }
+    worksheet.getCell('A1').alignment = { horizontal: 'center' }
+    
+    // Headers
+    const headers = ['Fecha', 'Día', 'Turno', 'Tipo Día', 'Canal', 'Pax Fc', 'Pax Re', 'Pax Gap', 'Venta Fc', 'Venta Re', 'Venta Gap', 'Ticket Fc', 'Ticket Re']
+    worksheet.addRow([])
+    worksheet.addRow(headers)
+    
+    const headerRow = worksheet.getRow(3)
+    headerRow.font = { bold: true }
+    headerRow.alignment = { horizontal: 'center' }
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    })
+    
+    // Datos
+    filteredData.forEach(day => {
+      day.turnos.forEach(turno => {
+        turno.canales.forEach(canal => {
+          const entry = canal.entry
+          const date = new Date(day.fecha + 'T12:00:00')
+          const diaNombre = date.toLocaleDateString('es-ES', { weekday: 'long' })
+          
+          const paxGap = entry.paxTeorico ? (((entry.paxReal || 0) - entry.paxTeorico) / entry.paxTeorico * 100).toFixed(1) + '%' : '-'
+          const ventaGap = entry.ventaTeorica ? (((entry.ventaReal || 0) - entry.ventaTeorica) / entry.ventaTeorica * 100).toFixed(1) + '%' : '-'
+          const ticketFc = entry.paxTeorico && entry.ventaTeorica ? Math.round(entry.ventaTeorica / entry.paxTeorico) : '-'
+          const ticketRe = entry.paxReal && entry.ventaReal ? Math.round(entry.ventaReal / entry.paxReal) : '-'
+          
+          worksheet.addRow([
+            date.toLocaleDateString('es-ES'),
+            diaNombre,
+            turno.turnoNombre,
+            turno.tipoDiaNombre,
+            canal.canalNombre,
+            entry.paxTeorico || '-',
+            entry.paxReal || '-',
+            paxGap,
+            entry.ventaTeorica || '-',
+            entry.ventaReal || '-',
+            ventaGap,
+            ticketFc,
+            ticketRe
+          ])
+        })
+      })
+    })
+    
+    // Totales
+    worksheet.addRow([])
+    worksheet.addRow([
+      'TOTALES', '', '', '', '',
+      monthTotals.paxFc,
+      monthTotals.paxRe,
+      monthTotals.avgGapPax ? monthTotals.avgGapPax.toFixed(1) + '%' : '-',
+      monthTotals.ventaFc,
+      monthTotals.ventaRe,
+      monthTotals.avgGapVenta ? monthTotals.avgGapVenta.toFixed(1) + '%' : '-',
+      monthTotals.ticketFc ? Math.round(monthTotals.ticketFc) : '-',
+      monthTotals.ticketRe ? Math.round(monthTotals.ticketRe) : '-'
+    ])
+    
+    const totalRow = worksheet.getRow(worksheet.rowCount)
+    totalRow.font = { bold: true }
+    totalRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0d0d0d' } }
+    })
+    
+    // Ajustar anchos
+    worksheet.columns.forEach((col, i) => {
+      col.width = [15, 12, 15, 12, 15, 10, 10, 10, 12, 12, 10, 10, 10][i] || 12
+    })
+    
+    // Descargar
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Forecast_${restauranteNombre}_${mesNombre}_${selectedYear}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -692,6 +789,13 @@ function ForecastTab() {
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Guardar
+          </button>
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Exportar Excel
           </button>
         </div>
       </div>
