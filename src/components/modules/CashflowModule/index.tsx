@@ -19,8 +19,10 @@ import {
   Filter,
   Folder,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  FileSpreadsheet
 } from 'lucide-react'
+import ExcelJS from 'exceljs'
 
 interface CashflowCategoria {
   id: string
@@ -493,6 +495,218 @@ export function CashflowModule() {
     return MESES.reduce((sum, _, i) => sum + getTotalMes(i + 1), 0)
   }
 
+  // === EXPORTAR A EXCEL ===
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = 'JM Consulting'
+    workbook.created = new Date()
+
+    // ========== HOJA RESUMEN ==========
+    const resumenSheet = workbook.addWorksheet('Resumen', { views: [{ state: 'frozen', ySplit: 3 }] })
+
+    // Configurar columnas
+    resumenSheet.columns = [
+      { width: 30 },  // Item
+      { width: 10 },  // % Ing
+      ...MESES.map(() => ({ width: 12 })),  // 12 meses
+      { width: 14 },  // Total
+    ]
+
+    // Título
+    resumenSheet.mergeCells('A1:P1')
+    const titleCell = resumenSheet.getCell('A1')
+    titleCell.value = `Cash Flow - Año ${anio}`
+    titleCell.font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } }
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    resumenSheet.getRow(1).height = 35
+
+    // Cards de resumen
+    const totalIngresos = getTotalIngresosAnual()
+    const totalEgresos = categorias.filter(c => c.tipo === 'egreso').reduce((sum, c) => 
+      sum + c.items.reduce((s, i) => s + getTotalItemAnual(i), 0), 0
+    )
+    const saldoAnual = MESES.reduce((sum, _, i) => sum + getSaldoMes(i + 1), 0)
+
+    resumenSheet.mergeCells('A2:D2')
+    resumenSheet.getCell('A2').value = `Ingresos: $${totalIngresos.toLocaleString()}`
+    resumenSheet.getCell('A2').font = { bold: true, color: { argb: 'FF22C55E' } }
+    resumenSheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+
+    resumenSheet.mergeCells('E2:H2')
+    resumenSheet.getCell('E2').value = `Egresos: $${totalEgresos.toLocaleString()}`
+    resumenSheet.getCell('E2').font = { bold: true, color: { argb: 'FFEF4444' } }
+    resumenSheet.getCell('E2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+
+    resumenSheet.mergeCells('I2:L2')
+    resumenSheet.getCell('I2').value = `Saldo: $${saldoAnual.toLocaleString()}`
+    resumenSheet.getCell('I2').font = { bold: true, color: { argb: saldoAnual >= 0 ? 'FF22C55E' : 'FFEF4444' } }
+    resumenSheet.getCell('I2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+
+    resumenSheet.getRow(2).height = 25
+
+    // Headers
+    const headerRow = resumenSheet.addRow(['ITEM', '% ING', ...MESES, 'TOTAL'])
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0d0d0d' } }
+    headerRow.alignment = { horizontal: 'center' }
+    headerRow.height = 25
+
+    // Helper para formatear moneda
+    const fmtCurrency = (val: number): string => val === 0 ? '-' : `$${val.toLocaleString()}`
+    const fmtPercent = (val: number): string => val === 0 ? '-' : `${val.toFixed(1)}%`
+
+    // Función para agregar items de un tipo
+    const agregarItems = (tipo: 'ingreso' | 'egreso') => {
+      const itemsPorNivel = getItemsPorNivel(tipo)
+      const colorTipo = tipo === 'ingreso' ? 'FF166534' : 'FF991B1B'  // Verde/Rojo
+      const colorTexto = tipo === 'ingreso' ? 'FF22C55E' : 'FFEF4444'
+
+      nivelesPL
+        .filter(nivel => itemsPorNivel.has(nivel.id) && (tipo === 'ingreso' || nivel.codigo !== 'PF'))
+        .forEach(nivel => {
+          const items = itemsPorNivel.get(nivel.id) || []
+          const totalNivel = items.reduce((s, i) => s + getTotalItemAnual(i), 0)
+          const pctNivel = (totalNivel / totalIngresos) * 100
+
+          // Fila de nivel
+          const nivelRow = resumenSheet.addRow([
+            `📁 ${nivel.nombre} (${items.length})`,
+            fmtPercent(pctNivel),
+            ...MESES.map((_, i) => fmtCurrency(items.reduce((s, item) => s + getTotalItemMes(item, i + 1), 0))),
+            fmtCurrency(totalNivel)
+          ])
+          nivelRow.font = { bold: true, color: { argb: colorTexto } }
+          nivelRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorTipo } }
+          nivelRow.getCell(1).alignment = { horizontal: 'left' }
+          for (let i = 2; i <= 15; i++) nivelRow.getCell(i).alignment = { horizontal: 'center' }
+
+          // Items del nivel
+          items.forEach(item => {
+            const itemRow = resumenSheet.addRow([
+              `   ${item.nombre}`,
+              fmtPercent(getPorcentajeSobreIngresos(item)),
+              ...MESES.map((_, i) => fmtCurrency(getTotalItemMes(item, i + 1))),
+              fmtCurrency(getTotalItemAnual(item))
+            ])
+            itemRow.font = { color: { argb: 'FFFFFFFF' } }
+            itemRow.getCell(1).alignment = { horizontal: 'left' }
+            for (let i = 2; i <= 15; i++) itemRow.getCell(i).alignment = { horizontal: 'center' }
+          }
+        })
+      })
+    }
+
+    // Agregar Ingresos y Egresos
+    agregarItems('ingreso')
+    agregarItems('egreso')
+
+    // Fila de SALDO
+    const saldoRow = resumenSheet.addRow([
+      '💰 SALDO',
+      '',
+      ...MESES.map((_, i) => fmtCurrency(getSaldoMes(i + 1))),
+      fmtCurrency(saldoAnual)
+    ])
+    saldoRow.font = { bold: true, color: { argb: 'FF3B82F6' } }
+    saldoRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
+    saldoRow.getCell(1).alignment = { horizontal: 'left' }
+    for (let i = 2; i <= 15; i++) saldoRow.getCell(i).alignment = { horizontal: 'center' }
+
+    // Aplicar bordes
+    resumenSheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF333333' } },
+          left: { style: 'thin', color: { argb: 'FF333333' } },
+          bottom: { style: 'thin', color: { argb: 'FF333333' } },
+          right: { style: 'thin', color: { argb: 'FF333333' } }
+        }
+      })
+    })
+
+    // ========== HOJAS POR ITEM ==========
+    const todosItems = categorias.flatMap(c => c.items)
+
+    todosItems.forEach(item => {
+      // Nombre de hoja válido (máx 31 caracteres, sin caracteres especiales)
+      const sheetName = item.nombre.substring(0, 31).replace(/[\\/*?:[\]]/g, '')
+      const itemSheet = workbook.addWorksheet(sheetName)
+
+      // Columnas
+      itemSheet.columns = [
+        { width: 12 },  // Mes
+        { width: 15 },  // Fecha
+        { width: 35 },  // Observación
+        { width: 15 },  // Monto
+      ]
+
+      // Título
+      itemSheet.mergeCells('A1:D1')
+      const itemTitle = itemSheet.getCell('A1')
+      itemTitle.value = `${item.nombre} (${item.cuentaPL?.nombre || 'Sin cuenta'})`
+      itemTitle.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } }
+      itemTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+      itemTitle.alignment = { horizontal: 'center' }
+      itemSheet.getRow(1).height = 30
+
+      // Headers
+      const itemHeader = itemSheet.addRow(['MES', 'FECHA', 'OBSERVACIÓN', 'MONTO'])
+      itemHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      itemHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0d0d0d' } }
+      itemHeader.alignment = { horizontal: 'center' }
+
+      // Registros agrupados por mes
+      MESES.forEach((mesNombre, idx) => {
+        const mesNum = idx + 1
+        const registrosMes = item.registros?.filter(r => r.mes === mesNum && r.anio === anio) || []
+        const totalMes = registrosMes.reduce((s, r) => s + (r.monto || 0), 0)
+
+        // Fila de mes
+        const mesRow = itemSheet.addRow([mesNombre, '', '', fmtCurrency(totalMes)])
+        mesRow.font = { bold: true, color: { argb: 'FF3B82F6' } }
+        mesRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
+
+        // Registros del mes
+        registrosMes.forEach(reg => {
+          const fechaStr = reg.fecha ? new Date(reg.fecha).toLocaleDateString('es-AR') : '-'
+          const regRow = itemSheet.addRow(['', fechaStr, reg.observacion || '', fmtCurrency(reg.monto)])
+          regRow.font = { color: { argb: 'FFFFFFFF' } }
+          regRow.getCell(4).alignment = { horizontal: 'right' }
+        })
+      })
+
+      // Total anual
+      const totalRow = itemSheet.addRow(['TOTAL', '', '', fmtCurrency(getTotalItemAnual(item))])
+      totalRow.font = { bold: true, color: { argb: 'FF22C55E' } }
+      totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } }
+
+      // Bordes
+      itemSheet.eachRow((row) => {
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF333333' } },
+            left: { style: 'thin', color: { argb: 'FF333333' } },
+            bottom: { style: 'thin', color: { argb: 'FF333333' } },
+            right: { style: 'thin', color: { argb: 'FF333333' } }
+          }
+        })
+      })
+    })
+
+    // Generar y descargar
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Cashflow_${anio}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   // Obtener todas las cuentas P&L para el selector
   const [cuentasPL, setCuentasPL] = useState<any[]>([])
   
@@ -579,13 +793,22 @@ export function CashflowModule() {
           )}
           
           {vista === 'resumen' && (
-            <button
-              onClick={() => setShowNewItemModal(true)}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Nuevo Item
-            </button>
+            <>
+              <button
+                onClick={exportToExcel}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Exportar Excel
+              </button>
+              <button
+                onClick={() => setShowNewItemModal(true)}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo Item
+              </button>
+            </>
           )}
         </div>
       </div>
