@@ -1164,6 +1164,53 @@ export function ComparativosModule() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-[#0d0d0d] border-t-2 border-blue-500/50 font-bold">
+                      <td className="px-4 py-3 text-white font-bold">TOTALES</td>
+                      {modoComparacion === 'solo' && (
+                        <>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalPax)}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalVentas, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.ticketPromedio, 'currency')}</td>
+                        </>
+                      )}
+                      {modoComparacion === 'periodos' && (
+                        <>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalPax)}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalVentas, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.ticketPromedio, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoB.totalPax)}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoB.totalVentas, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoB.ticketPromedio, 'currency')}</td>
+                          <td className={`px-3 py-3 text-right font-bold ${getVariacionColor(data.resumen.variacionTotal.pax)}`}>
+                            {data.resumen.variacionTotal.pax > 0 ? '+' : ''}{data.resumen.variacionTotal.pax}%
+                          </td>
+                          <td className={`px-3 py-3 text-right font-bold ${getVariacionColor(data.resumen.variacionTotal.ventas)}`}>
+                            {data.resumen.variacionTotal.ventas > 0 ? '+' : ''}{data.resumen.variacionTotal.ventas}%
+                          </td>
+                          <td className={`px-3 py-3 text-right font-bold ${getVariacionColor(data.resumen.variacionTotal.ticket)}`}>
+                            {data.resumen.variacionTotal.ticket > 0 ? '+' : ''}{data.resumen.variacionTotal.ticket}%
+                          </td>
+                        </>
+                      )}
+                      {modoComparacion === 'teorico' && (
+                        <>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalPax)}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.totalVentas, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-white">{formatNumber(data.resumen.periodoA.ticketPromedio, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoA.totalPaxTeorico)}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoA.totalVentaTeorica, 'currency')}</td>
+                          <td className="px-3 py-3 text-right text-gray-300">{formatNumber(data.resumen.periodoA.ticketTeorico, 'currency')}</td>
+                          <td className={`px-3 py-3 text-right font-bold ${getVariacionColor(data.resumen.periodoA.gapPax)}`}>
+                            {data.resumen.periodoA.gapPax > 0 ? '+' : ''}{data.resumen.periodoA.gapPax}%
+                          </td>
+                          <td className={`px-3 py-3 text-right font-bold ${getVariacionColor(data.resumen.periodoA.gapVentas)}`}>
+                            {data.resumen.periodoA.gapVentas > 0 ? '+' : ''}{data.resumen.periodoA.gapVentas}%
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
