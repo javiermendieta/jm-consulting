@@ -115,6 +115,9 @@ function ForecastTab() {
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number | null>(null) // 0-6 (domingo-sábado)
+  
+  const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
   
   // Expansión
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
@@ -490,7 +493,7 @@ function ForecastTab() {
     }
   }, [canales])
 
-  // Datos filtrados según turnos, canales y día seleccionados
+  // Datos filtrados según turnos, canales, día numérico y día de la semana
   const filteredData = useMemo(() => {
     let data = groupedData.map(day => ({
       ...day,
@@ -500,13 +503,21 @@ function ForecastTab() {
       }))
     }))
     
-    // Filtrar por día si está seleccionado
+    // Filtrar por día numérico si está seleccionado
     if (selectedDay !== null) {
       data = data.filter(d => d.diaNum === selectedDay)
     }
     
+    // Filtrar por día de la semana si está seleccionado
+    if (selectedDayOfWeek !== null) {
+      data = data.filter(d => {
+        const fecha = new Date(d.fecha + 'T12:00:00')
+        return fecha.getDay() === selectedDayOfWeek
+      })
+    }
+    
     return data
-  }, [groupedData, selectedTurnos, selectedCanales, selectedDay])
+  }, [groupedData, selectedTurnos, selectedCanales, selectedDay, selectedDayOfWeek])
 
   // Calcular totales del mes (basado en datos filtrados)
   const monthTotals = useMemo(() => {
@@ -734,6 +745,27 @@ function ForecastTab() {
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+          
+          {/* Filtro de día de la semana */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedDayOfWeek ?? ''}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === '') {
+                  setSelectedDayOfWeek(null)
+                } else {
+                  setSelectedDayOfWeek(Number(val))
+                }
+              }}
+              className="px-3 py-2 bg-[#0d0d0d] border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Día semana</option>
+              {diasSemana.map((dia, i) => (
+                <option key={i} value={i}>{dia}</option>
+              ))}
+            </select>
           </div>
           
           <select
