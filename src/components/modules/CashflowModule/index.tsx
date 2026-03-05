@@ -592,9 +592,8 @@ export function CashflowModule() {
             itemRow.font = { color: { argb: 'FFFFFFFF' } }
             itemRow.getCell(1).alignment = { horizontal: 'left' }
             for (let i = 2; i <= 15; i++) itemRow.getCell(i).alignment = { horizontal: 'center' }
-          }
+          })
         })
-      })
     }
 
     // Agregar Ingresos y Egresos
