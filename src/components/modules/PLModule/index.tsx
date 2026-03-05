@@ -15,8 +15,10 @@ import {
   Percent,
   ArrowDown,
   Save,
-  X
+  X,
+  FileSpreadsheet
 } from 'lucide-react'
+import ExcelJS from 'exceljs'
 
 interface NivelPL {
   id: string
@@ -158,6 +160,172 @@ export function PLModule() {
   // Descartar cambios
   const discardChanges = () => {
     setForecastsItems({ ...forecastsOriginal })
+  }
+
+  // Exportar a Excel
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('P&L')
+
+    // Configurar anchos de columna
+    worksheet.columns = [
+      { width: 40 },  // Concepto
+      { width: 18 },  // Teórico
+      { width: 10 },  // % T
+      { width: 18 },  // Real
+      { width: 10 },  // % R
+      { width: 18 },  // Diferencia
+      { width: 12 },  // % Cumpl.
+    ]
+
+    // Título
+    const { mes, anio } = getMesAnio()
+    const mesNombre = new Date(anio, mes - 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    
+    worksheet.mergeCells('A1:G1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = `Estado de Resultados (P&L) - ${mesNombre}`
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getRow(1).height = 30
+
+    // Headers
+    const headers = ['Concepto', 'Teórico', '% Teórico', 'Real', '% Real', 'Diferencia', '% Cumpl.']
+    const headerRow = worksheet.addRow(headers)
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0d0d0d' } }
+    headerRow.alignment = { horizontal: 'center' }
+    headerRow.height = 25
+
+    // Función para formatear moneda en Excel
+    const formatCurrencyExcel = (value: number | null | undefined): string => {
+      if (value === null || value === undefined || value === 0) return '-'
+      return `$${value.toLocaleString()}`
+    }
+
+    // Función para formatear porcentaje en Excel
+    const formatPercentExcel = (value: number | null | undefined, total: number): string => {
+      if (value === null || value === undefined || value === 0 || total === 0) return '-'
+      return `${((value / total) * 100).toFixed(1)}%`
+    }
+
+    // Recorrer niveles y cuentas
+    niveles.forEach((nivel) => {
+      const esCalculado = NIVELES_CALCULADOS.includes(nivel.codigo)
+      const cuentasNivel = cuentas.filter(c => c.nivelId === nivel.id)
+      const totalNivelTeorico = getTotalNivel(nivel.id, 'teórico')
+      const totalNivelReal = getTotalNivel(nivel.id, 'real')
+
+      // Fila de nivel
+      const nivelRow = worksheet.addRow([
+        `${esCalculado ? '⚡ ' : ''}${nivel.nombre}${esCalculado ? ' (AUTO)' : ''}`,
+        formatCurrencyExcel(totalNivelTeorico),
+        formatPercentExcel(totalNivelTeorico, totalVentasTeorico),
+        formatCurrencyExcel(totalNivelReal),
+        formatPercentExcel(totalNivelReal, totalVentasReal),
+        formatCurrencyExcel(totalNivelReal - totalNivelTeorico),
+        totalNivelTeorico !== 0 ? `${((totalNivelReal / totalNivelTeorico) * 100).toFixed(0)}%` : '-'
+      ])
+
+      // Estilo para nivel
+      let nivelColor = 'FF2d2d2d'
+      if (nivel.codigo === 'PF') nivelColor = 'FF166534'  // Verde
+      else if (nivel.codigo === 'VN' || nivel.codigo === 'CM') nivelColor = 'FF581c87'  // Púrpura
+
+      nivelRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      nivelRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: nivelColor } }
+      nivelRow.alignment = { horizontal: ['A'].includes('A') ? 'left' : 'center' }
+      nivelRow.getCell(1).alignment = { horizontal: 'left' }
+      
+      // Centrar celdas numéricas
+      for (let i = 2; i <= 7; i++) {
+        nivelRow.getCell(i).alignment = { horizontal: 'center' }
+      }
+
+      // Si es calculado, agregar fila con fórmula
+      if (esCalculado) {
+        let formula = ''
+        if (nivel.codigo === 'VN') formula = 'Venta Bruta - Costo de Venta'
+        else if (nivel.codigo === 'CM') formula = 'Venta Neta - CMV'
+        else if (nivel.codigo === 'PF') formula = 'Contribución Marginal - Gastos Operativos'
+
+        const formulaRow = worksheet.addRow([`   ↳ ${formula}`, '', '', '', '', '', ''])
+        formulaRow.font = { italic: true, color: { argb: 'FFEAB308' }, size: 10 }
+      }
+
+      // Cuentas del nivel (solo si no es calculado)
+      if (!esCalculado) {
+        cuentasNivel.forEach((cuenta) => {
+          const teoricoTotal = getTeoricoCuenta(cuenta)
+          const realTotal = getRealCuenta(cuenta)
+
+          // Fila de cuenta
+          const cuentaRow = worksheet.addRow([
+            `   ${cuenta.nombre}`,
+            formatCurrencyExcel(teoricoTotal),
+            formatPercentExcel(teoricoTotal, totalVentasTeorico),
+            formatCurrencyExcel(realTotal),
+            formatPercentExcel(realTotal, totalVentasReal),
+            formatCurrencyExcel(realTotal - teoricoTotal),
+            teoricoTotal > 0 ? `${((realTotal / teoricoTotal) * 100).toFixed(0)}%` : '-'
+          ])
+
+          cuentaRow.font = { color: { argb: 'FFFFFFFF' } }
+          cuentaRow.alignment = { horizontal: 'left' }
+          for (let i = 2; i <= 7; i++) {
+            cuentaRow.getCell(i).alignment = { horizontal: 'center' }
+          }
+
+          // Items de la cuenta
+          if (cuenta.cashflowItems && cuenta.cashflowItems.length > 0) {
+            cuenta.cashflowItems.forEach((item) => {
+              const teoricoItem = forecastsItems[item.id] || 0
+              const realItem = getRealItem(item)
+
+              const itemRow = worksheet.addRow([
+                `      → ${item.nombre}`,
+                formatCurrencyExcel(teoricoItem),
+                formatPercentExcel(teoricoItem, totalVentasTeorico),
+                formatCurrencyExcel(realItem),
+                formatPercentExcel(realItem, totalVentasReal),
+                formatCurrencyExcel(realItem - teoricoItem),
+                teoricoItem > 0 ? `${((realItem / teoricoItem) * 100).toFixed(0)}%` : '-'
+              ])
+
+              itemRow.font = { color: { argb: 'FF9CA3AF' }, size: 10 }
+              for (let i = 2; i <= 7; i++) {
+                itemRow.getCell(i).alignment = { horizontal: 'center' }
+              }
+            })
+          }
+        })
+      }
+    })
+
+    // Agregar bordes
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF333333' } },
+          left: { style: 'thin', color: { argb: 'FF333333' } },
+          bottom: { style: 'thin', color: { argb: 'FF333333' } },
+          right: { style: 'thin', color: { argb: 'FF333333' } }
+        }
+      })
+    })
+
+    // Generar archivo
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `PL_${mesNombre.replace(' ', '_')}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   // Actualizar valor local (sin guardar)
@@ -342,6 +510,14 @@ export function PLModule() {
           
           <button onClick={fetchData} className="p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg text-gray-400">
             <RefreshCw className="w-5 h-5" />
+          </button>
+          
+          <button
+            onClick={exportToExcel}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Exportar Excel
           </button>
         </div>
       </div>
