@@ -700,8 +700,9 @@ function ForecastTab() {
       )}
     
       {/* Barra de filtros y acciones */}
-      <div className="flex items-center justify-between bg-[#1a1a1a] rounded-xl border border-white/10 p-4">
-        <div className="flex items-center gap-4">
+      <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-4 space-y-4">
+        {/* Fila de filtros */}
+        <div className="flex items-center gap-3 flex-wrap">
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
@@ -872,32 +873,35 @@ function ForecastTab() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        {/* Fila de acciones */}
+        <div className="flex items-center justify-between pt-2 border-t border-white/10">
           {hasChanges && (
             <span className="text-yellow-400 text-sm">* Cambios sin guardar</span>
           )}
-          <button
-            onClick={fetchEntries}
-            className="flex items-center gap-2 px-4 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg text-white transition-colors text-sm"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Actualizar
-          </button>
-          <button
-            onClick={saveAllChanges}
-            disabled={saving || !hasChanges}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Guardar
-          </button>
-          <button
-            onClick={exportToExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors text-sm"
-          >
-            <Download className="w-4 h-4" />
-            Exportar Excel
-          </button>
+          <div className="flex items-center gap-3 ml-auto">
+            <button
+              onClick={fetchEntries}
+              className="flex items-center gap-2 px-4 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-lg text-white transition-colors text-sm"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Actualizar
+            </button>
+            <button
+              onClick={saveAllChanges}
+              disabled={saving || !hasChanges}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Guardar
+            </button>
+            <button
+              onClick={exportToExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors text-sm"
+            >
+              <Download className="w-4 h-4" />
+              Exportar Excel
+            </button>
+          </div>
         </div>
       </div>
 
