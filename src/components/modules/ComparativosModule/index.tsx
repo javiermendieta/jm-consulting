@@ -243,6 +243,8 @@ export function ComparativosModule() {
   const aplicarPreset = (preset: string) => {
     const today = new Date()
     let startA: Date, endA: Date, startB: Date, endB: Date
+    const currentYear = today.getFullYear()
+    const currentMonth = today.getMonth()
 
     switch (preset) {
       case 'semana_actual_vs_anterior':
@@ -278,6 +280,70 @@ export function ComparativosModule() {
         endA = new Date(today.getFullYear(), today.getMonth() + 1, 0)
         startB = new Date(today.getFullYear() - 1, today.getMonth(), 1)
         endB = new Date(today.getFullYear() - 1, today.getMonth() + 1, 0)
+        break
+        
+      // === TRIMESTRES ===
+      case 'q1_vs_q1_anterior':
+        // Q1 actual año vs Q1 año anterior
+        startA = new Date(currentYear, 0, 1)  // 1 Enero
+        endA = new Date(currentYear, 2, 31)    // 31 Marzo
+        startB = new Date(currentYear - 1, 0, 1)
+        endB = new Date(currentYear - 1, 2, 31)
+        break
+        
+      case 'q2_vs_q2_anterior':
+        startA = new Date(currentYear, 3, 1)   // 1 Abril
+        endA = new Date(currentYear, 5, 30)    // 30 Junio
+        startB = new Date(currentYear - 1, 3, 1)
+        endB = new Date(currentYear - 1, 5, 30)
+        break
+        
+      case 'q3_vs_q3_anterior':
+        startA = new Date(currentYear, 6, 1)   // 1 Julio
+        endA = new Date(currentYear, 8, 30)    // 30 Septiembre
+        startB = new Date(currentYear - 1, 6, 1)
+        endB = new Date(currentYear - 1, 8, 30)
+        break
+        
+      case 'q4_vs_q4_anterior':
+        startA = new Date(currentYear, 9, 1)   // 1 Octubre
+        endA = new Date(currentYear, 11, 31)   // 31 Diciembre
+        startB = new Date(currentYear - 1, 9, 1)
+        endB = new Date(currentYear - 1, 11, 31)
+        break
+        
+      // === SEMESTRES ===
+      case 'h1_vs_h1_anterior':
+        // Primer semestre (Ene-Jun)
+        startA = new Date(currentYear, 0, 1)
+        endA = new Date(currentYear, 5, 30)
+        startB = new Date(currentYear - 1, 0, 1)
+        endB = new Date(currentYear - 1, 5, 30)
+        break
+        
+      case 'h2_vs_h2_anterior':
+        // Segundo semestre (Jul-Dic)
+        startA = new Date(currentYear, 6, 1)
+        endA = new Date(currentYear, 11, 31)
+        startB = new Date(currentYear - 1, 6, 1)
+        endB = new Date(currentYear - 1, 11, 31)
+        break
+        
+      // === AÑO COMPLETO ===
+      case 'año_vs_año_anterior':
+        startA = new Date(currentYear, 0, 1)
+        endA = new Date(currentYear, 11, 31)
+        startB = new Date(currentYear - 1, 0, 1)
+        endB = new Date(currentYear - 1, 11, 31)
+        break
+        
+      // === ACUMULADOS ===
+      case 'acumulado_año_vs_acumulado_año_anterior':
+        // Acumulado del año hasta hoy vs mismo período año anterior
+        startA = new Date(currentYear, 0, 1)
+        endA = new Date(today)
+        startB = new Date(currentYear - 1, 0, 1)
+        endB = new Date(currentYear - 1, currentMonth, today.getDate())
         break
         
       default:
@@ -594,71 +660,225 @@ export function ComparativosModule() {
 
       {/* Presets - solo en modo periodos */}
       {modoComparacion === 'periodos' && (
-        <div className="flex flex-wrap gap-2">
-          <span className="text-xs text-gray-400 py-1">Presets:</span>
-          {[
-            { id: 'semana_actual_vs_anterior', label: 'Esta semana vs Anterior' },
-            { id: 'mes_actual_vs_anterior', label: 'Este mes vs Anterior' },
-            { id: 'ultimos_7_vs_anteriores_7', label: 'Últimos 7 días vs 7 anteriores' },
-            { id: 'mes_vs_mismo_mes_año_pasado', label: 'vs Mismo mes año pasado' }
-          ].map((preset) => (
-            <button
-              key={preset.id}
-              onClick={() => aplicarPreset(preset.id)}
-              className="px-3 py-1 text-xs bg-[#1a1a1a] hover:bg-[#2d2d2d] border border-white/10 rounded-full text-gray-400 hover:text-white"
-            >
-              {preset.label}
-            </button>
-          ))}
+        <div className="space-y-3">
+          {/* Períodos */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-gray-400 py-1 min-w-[60px]">Períodos:</span>
+            {[
+              { id: 'semana_actual_vs_anterior', label: 'Esta semana vs Anterior' },
+              { id: 'mes_actual_vs_anterior', label: 'Este mes vs Anterior' },
+              { id: 'ultimos_7_vs_anteriores_7', label: 'Últimos 7 vs 7 anteriores' },
+              { id: 'mes_vs_mismo_mes_año_pasado', label: 'vs Mismo mes año pasado' }
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => aplicarPreset(preset.id)}
+                className="px-3 py-1 text-xs bg-[#1a1a1a] hover:bg-[#2d2d2d] border border-white/10 rounded-full text-gray-400 hover:text-white"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Trimestres */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-blue-400 py-1 min-w-[60px]">Trimestres:</span>
+            {[
+              { id: 'q1_vs_q1_anterior', label: 'Q1 vs Q1 anterior' },
+              { id: 'q2_vs_q2_anterior', label: 'Q2 vs Q2 anterior' },
+              { id: 'q3_vs_q3_anterior', label: 'Q3 vs Q3 anterior' },
+              { id: 'q4_vs_q4_anterior', label: 'Q4 vs Q4 anterior' }
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => aplicarPreset(preset.id)}
+                className="px-3 py-1 text-xs bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-blue-400 hover:text-blue-300"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Semestres y Año */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-purple-400 py-1 min-w-[60px]">Semestres:</span>
+            {[
+              { id: 'h1_vs_h1_anterior', label: 'H1 vs H1 anterior (Ene-Jun)' },
+              { id: 'h2_vs_h2_anterior', label: 'H2 vs H2 anterior (Jul-Dic)' }
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => aplicarPreset(preset.id)}
+                className="px-3 py-1 text-xs bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-full text-purple-400 hover:text-purple-300"
+              >
+                {preset.label}
+              </button>
+            ))}
+            <span className="text-xs text-gray-600 mx-2">|</span>
+            {[
+              { id: 'año_vs_año_anterior', label: 'Año vs Año anterior' },
+              { id: 'acumulado_año_vs_acumulado_año_anterior', label: 'Acumulado año vs año anterior' }
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => aplicarPreset(preset.id)}
+                className="px-3 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-full text-green-400 hover:text-green-300"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       
       {/* Presets para modo solo/teorico */}
       {(modoComparacion === 'solo' || modoComparacion === 'teorico') && (
-        <div className="flex flex-wrap gap-2">
-          <span className="text-xs text-gray-400 py-1">Presets:</span>
-          {[
-            { id: 'semana', label: 'Esta semana', getDates: () => {
-              const today = new Date()
-              const start = new Date(today)
-              start.setDate(today.getDate() - today.getDay() + 1)
-              const end = new Date(start)
-              end.setDate(start.getDate() + 6)
-              return { start, end }
-            }},
-            { id: 'mes', label: 'Este mes', getDates: () => {
-              const today = new Date()
-              const start = new Date(today.getFullYear(), today.getMonth(), 1)
-              const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-              return { start, end }
-            }},
-            { id: 'ultimos7', label: 'Últimos 7 días', getDates: () => {
-              const today = new Date()
-              const end = new Date(today)
-              const start = new Date(today)
-              start.setDate(today.getDate() - 6)
-              return { start, end }
-            }},
-            { id: 'ultimos30', label: 'Últimos 30 días', getDates: () => {
-              const today = new Date()
-              const end = new Date(today)
-              const start = new Date(today)
-              start.setDate(today.getDate() - 29)
-              return { start, end }
-            }}
-          ].map((preset) => (
+        <div className="space-y-3">
+          {/* Períodos */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-gray-400 py-1 min-w-[60px]">Períodos:</span>
+            {[
+              { id: 'semana', label: 'Esta semana', getDates: () => {
+                const today = new Date()
+                const start = new Date(today)
+                start.setDate(today.getDate() - today.getDay() + 1)
+                const end = new Date(start)
+                end.setDate(start.getDate() + 6)
+                return { start, end }
+              }},
+              { id: 'mes', label: 'Este mes', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), today.getMonth(), 1)
+                const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+                return { start, end }
+              }},
+              { id: 'ultimos7', label: 'Últimos 7 días', getDates: () => {
+                const today = new Date()
+                const end = new Date(today)
+                const start = new Date(today)
+                start.setDate(today.getDate() - 6)
+                return { start, end }
+              }},
+              { id: 'ultimos30', label: 'Últimos 30 días', getDates: () => {
+                const today = new Date()
+                const end = new Date(today)
+                const start = new Date(today)
+                start.setDate(today.getDate() - 29)
+                return { start, end }
+              }}
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  const { start, end } = preset.getDates()
+                  setFechaInicioA(start.toISOString().split('T')[0])
+                  setFechaFinA(end.toISOString().split('T')[0])
+                }}
+                className="px-3 py-1 text-xs bg-[#1a1a1a] hover:bg-[#2d2d2d] border border-white/10 rounded-full text-gray-400 hover:text-white"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Trimestres */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-blue-400 py-1 min-w-[60px]">Trimestres:</span>
+            {[
+              { id: 'q1', label: 'Q1 (Ene-Mar)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 0, 1)
+                const end = new Date(today.getFullYear(), 2, 31)
+                return { start, end }
+              }},
+              { id: 'q2', label: 'Q2 (Abr-Jun)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 3, 1)
+                const end = new Date(today.getFullYear(), 5, 30)
+                return { start, end }
+              }},
+              { id: 'q3', label: 'Q3 (Jul-Sep)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 6, 1)
+                const end = new Date(today.getFullYear(), 8, 30)
+                return { start, end }
+              }},
+              { id: 'q4', label: 'Q4 (Oct-Dic)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 9, 1)
+                const end = new Date(today.getFullYear(), 11, 31)
+                return { start, end }
+              }}
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  const { start, end } = preset.getDates()
+                  setFechaInicioA(start.toISOString().split('T')[0])
+                  setFechaFinA(end.toISOString().split('T')[0])
+                }}
+                className="px-3 py-1 text-xs bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-blue-400 hover:text-blue-300"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Semestres y Año */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-purple-400 py-1 min-w-[60px]">Semestres:</span>
+            {[
+              { id: 'h1', label: 'H1 (Ene-Jun)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 0, 1)
+                const end = new Date(today.getFullYear(), 5, 30)
+                return { start, end }
+              }},
+              { id: 'h2', label: 'H2 (Jul-Dic)', getDates: () => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 6, 1)
+                const end = new Date(today.getFullYear(), 11, 31)
+                return { start, end }
+              }}
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  const { start, end } = preset.getDates()
+                  setFechaInicioA(start.toISOString().split('T')[0])
+                  setFechaFinA(end.toISOString().split('T')[0])
+                }}
+                className="px-3 py-1 text-xs bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-full text-purple-400 hover:text-purple-300"
+              >
+                {preset.label}
+              </button>
+            ))}
+            <span className="text-xs text-gray-600 mx-2">|</span>
             <button
-              key={preset.id}
               onClick={() => {
-                const { start, end } = preset.getDates()
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 0, 1)
+                const end = new Date(today.getFullYear(), 11, 31)
                 setFechaInicioA(start.toISOString().split('T')[0])
                 setFechaFinA(end.toISOString().split('T')[0])
               }}
-              className="px-3 py-1 text-xs bg-[#1a1a1a] hover:bg-[#2d2d2d] border border-white/10 rounded-full text-gray-400 hover:text-white"
+              className="px-3 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-full text-green-400 hover:text-green-300"
             >
-              {preset.label}
+              Año completo
             </button>
-          ))}
+            <button
+              onClick={() => {
+                const today = new Date()
+                const start = new Date(today.getFullYear(), 0, 1)
+                const end = new Date(today)
+                setFechaInicioA(start.toISOString().split('T')[0])
+                setFechaFinA(end.toISOString().split('T')[0])
+              }}
+              className="px-3 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-full text-green-400 hover:text-green-300"
+            >
+              Acumulado año
+            </button>
+          </div>
         </div>
       )}
 
