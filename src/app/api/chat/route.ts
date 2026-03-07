@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 
+// Configuración desde variables de entorno
+const getZAIConfig = () => {
+  const baseUrl = process.env.ZAI_BASE_URL
+  const apiKey = process.env.ZAI_API_KEY
+  const token = process.env.ZAI_TOKEN
+  const chatId = process.env.ZAI_CHAT_ID
+  const userId = process.env.ZAI_USER_ID
+
+  if (baseUrl && apiKey) {
+    const config: any = { baseUrl, apiKey }
+    if (token) config.token = token
+    if (chatId) config.chatId = chatId
+    if (userId) config.userId = userId
+    return config
+  }
+  return null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { messages } = await request.json()
@@ -12,7 +30,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const zai = await ZAI.create()
+    // Crear instancia de ZAI con configuración de env vars o archivo
+    const config = getZAIConfig()
+    const zai = config ? new ZAI(config) : await ZAI.create()
 
     const completion = await zai.chat.completions.create({
       messages: [
