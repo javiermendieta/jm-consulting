@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card } from '@/components/ui/card'
 import { 
   MessageCircle, 
@@ -25,14 +24,12 @@ export function AIChatWidget() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   // Focus input when chat opens
@@ -99,12 +96,12 @@ export function AIChatWidget() {
 
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Button - always visible */}
       <Button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-all duration-300 ${
+        className={`fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-[100] transition-all duration-300 ${
           isOpen 
-            ? 'bg-red-500 hover:bg-red-600' 
+            ? 'bg-red-500 hover:bg-red-600 rotate-90' 
             : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'
         }`}
         size="icon"
@@ -118,22 +115,32 @@ export function AIChatWidget() {
 
       {/* Chat Panel */}
       {isOpen && (
-        <Card className="fixed bottom-24 right-6 w-96 h-[500px] flex flex-col shadow-2xl z-50 border border-white/20 bg-slate-900/95 backdrop-blur-sm animate-in slide-in-from-bottom-4 duration-300">
-          {/* Header */}
-          <div className="flex items-center gap-3 p-4 border-b border-white/10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-lg">
-            <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-white" />
+        <Card className="fixed right-6 bottom-24 w-96 max-h-[70vh] flex flex-col shadow-2xl z-[100] border border-white/20 bg-slate-900/95 backdrop-blur-sm animate-in slide-in-from-bottom-4 duration-300 overflow-hidden">
+          {/* Header - Fixed */}
+          <div className="flex items-center justify-between p-4 border-b border-white/10 bg-gradient-to-r from-blue-600 to-purple-600 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Asistente IA</h3>
+                <p className="text-xs text-white/70">Powered by JM Consulting</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-white">Asistente IA</h3>
-              <p className="text-xs text-white/70">Powered by JM Consulting</p>
-            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsOpen(false)}
+              className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
 
-          {/* Messages */}
-          <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+          {/* Messages - Scrollable */}
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-8">
                 <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 flex items-center justify-center">
                   <Bot className="h-8 w-8 text-blue-400" />
                 </div>
@@ -154,7 +161,7 @@ export function AIChatWidget() {
                       key={i}
                       variant="outline"
                       size="sm"
-                      className="w-full justify-start text-xs bg-white/5 border-white/10 hover:bg-white/10"
+                      className="w-full justify-start text-xs bg-white/5 border-white/10 hover:bg-white/10 text-slate-200"
                       onClick={() => {
                         setInput(q)
                         inputRef.current?.focus()
@@ -190,7 +197,7 @@ export function AIChatWidget() {
                         ? 'bg-blue-500 text-white rounded-tr-sm'
                         : 'bg-white/10 text-slate-200 rounded-tl-sm'
                     }`}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                     </div>
                   </div>
                 ))}
@@ -205,12 +212,15 @@ export function AIChatWidget() {
                     </div>
                   </div>
                 )}
+                
+                {/* Scroll anchor */}
+                <div ref={messagesEndRef} />
               </div>
             )}
-          </ScrollArea>
+          </div>
 
-          {/* Input */}
-          <div className="p-4 border-t border-white/10">
+          {/* Input - Fixed at bottom */}
+          <div className="p-4 border-t border-white/10 shrink-0 bg-slate-900/50">
             <div className="flex gap-2">
               <Input
                 ref={inputRef}
@@ -224,7 +234,7 @@ export function AIChatWidget() {
               <Button
                 onClick={sendMessage}
                 disabled={!input.trim() || isLoading}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shrink-0"
                 size="icon"
               >
                 <Send className="h-4 w-4" />
