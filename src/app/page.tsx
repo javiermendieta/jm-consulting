@@ -10,6 +10,7 @@ import { PLModule } from '@/components/modules/PLModule'
 import { CashflowModule } from '@/components/modules/CashflowModule'
 import { ComparativosModule } from '@/components/modules/ComparativosModule'
 import { ConfigModule } from '@/components/modules/ConfigModule'
+import { AIChatWidget } from '@/components/ai-chat/AIChatWidget'
 
 export default function Home() {
   const { currentModule, sidebarOpen } = useStore()
@@ -53,6 +54,9 @@ export default function Home() {
           {renderModule()}
         </div>
       </main>
+
+      {/* AI Chat Widget */}
+      <AIChatWidget />
     </div>
   )
 }
