@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const completion = await zai.chat.completions.create({
       messages: [
         {
-          role: 'system',
+          role: 'assistant',
           content: `Eres un asistente de IA integrado en JM Consulting, un sistema de gestión para consultoría de restaurantes. 
           
 Tu rol es ayudar a los usuarios con:
@@ -31,11 +31,11 @@ Sé amable, profesional y conciso en tus respuestas. Responde siempre en españo
         },
         ...messages
       ],
-      temperature: 0.7,
-      max_tokens: 1000
+      stream: false,
+      thinking: { type: 'disabled' }
     })
 
-    const messageContent = completion.choices[0]?.message?.content
+    const messageContent = completion.choices?.[0]?.message?.content
 
     if (!messageContent) {
       return NextResponse.json(
