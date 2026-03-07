@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     const zai = config ? new ZAI(config) : await ZAI.create()
 
     const completion = await zai.chat.completions.create({
+      model: 'glm-4-flash',
       messages: [
         {
           role: 'assistant',
